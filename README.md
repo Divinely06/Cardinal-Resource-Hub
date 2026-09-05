@@ -2,6 +2,17 @@
 
 Cardinal Resource Hub is a Mapúa University facility and equipment reservation system for organizations, faculty reviewers, maintenance staff, administrators, and the Dean.
 
+## Repository Layout
+
+```text
+src/                 Active React application and shared styles
+public/              Runtime assets, including the Mapúa logo
+database/            Neon/PostgreSQL schema reference
+reference/           Original project references and source materials
+README.md            Product, workflow, and database documentation
+vite.config.ts       Vite development and production configuration
+```
+
 ## Approval Flow
 
 `Organization submission → Faculty review → Maintenance handling → Admin review → Dean final decision → Approved`
@@ -10,7 +21,7 @@ The Dean is the final authority for budget, policy, and campus-rule decisions. A
 
 ## ERD Database Design
 
-The following relational design is intended for Neon PostgreSQL. The executable reference schema is in [schema.sql](schema.sql).
+The following relational design is intended for Neon PostgreSQL. The executable reference schema is in [database/schema.sql](database/schema.sql).
 
 ```mermaid
 erDiagram
