@@ -4,7 +4,7 @@ create table app_user (
   full_name text not null,
   email text not null unique,
   password_hash text not null,
-  role text not null check (role in ('organization', 'faculty', 'maintenance', 'admin')),
+  role text not null check (role in ('organization', 'faculty', 'maintenance', 'admin', 'dean')),
   contact_number text
 );
 
@@ -42,7 +42,7 @@ create table booking (
   start_time time not null,
   end_time time not null,
   purpose text not null,
-  status text not null check (status in ('Faculty review', 'Maintenance review', 'Admin review', 'Approved', 'Prepared', 'Rejected'))
+  status text not null check (status in ('Faculty review', 'Maintenance review', 'Admin review', 'Dean review', 'Approved', 'Prepared', 'Rejected'))
 );
 
 create table booking_equipment (
@@ -65,7 +65,7 @@ create table approval (
   approval_id integer generated always as identity primary key,
   booking_id integer not null references booking(booking_id) on delete cascade,
   approved_user_id integer not null references app_user(user_id),
-  approval_level integer not null check (approval_level in (1, 2, 3)),
+  approval_level integer not null check (approval_level in (1, 2, 3, 4)),
   status text not null check (status in ('Approved', 'Rejected', 'Pending')),
   date_actioned timestamptz,
   remarks text
