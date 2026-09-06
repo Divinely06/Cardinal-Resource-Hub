@@ -86,6 +86,9 @@ app.get("/api/bookings", async (request, response) => {
         b.purpose,
         b.rejection_reason,
         b.status,
+        coalesce((select json_agg(concat(be.quantity_requested, ' × ', e.equipment_name) order by e.equipment_name)
+          from booking_equipment be join equipment e on e.equipment_id = be.equipment_id
+          where be.booking_id = b.booking_id), '[]'::json) as equipment,
         coalesce((select json_agg(json_build_object(
           'name', d.file_name, 'type', d.content_type, 'data', d.file_path
         )) from document d where d.booking_id = b.booking_id), '[]'::json) as documents
@@ -225,10 +228,15 @@ app.post("/api/bookings", async (request, response) => {
     purpose,
     clientRequestId,
     attachment,
+    equipment = [],
   } = request.body;
 
   if (!clientRequestId) {
     response.status(400).json({ error: "Booking request ID is required" });
+    return;
+  }
+  if (!Array.isArray(equipment) || equipment.some((item: unknown) => typeof item !== "string")) {
+    response.status(400).json({ error: "Invalid equipment request" });
     return;
   }
   if (attachment?.data && attachment.data.length > 14 * 1024 * 1024) {
@@ -238,6 +246,21 @@ app.post("/api/bookings", async (request, response) => {
   if (attachment?.name && !/\.(pdf|docx)$/i.test(String(attachment.name))) {
     response.status(415).json({ error: "Only PDF and DOCX files are allowed" });
     return;
+  }
+  for (const item of equipment) {
+    const match = String(item).match(/^(.*?) × (\d+)$/);
+    if (!match || Number(match[2]) < 1) {
+      response.status(400).json({ error: "Invalid equipment quantity" });
+      return;
+    }
+    const [equipmentRow] = await sql`
+      select equipment_id, quantity_available from equipment
+      where equipment_name = ${match[1]}
+    `;
+    if (!equipmentRow || Number(match[2]) > Number(equipmentRow.quantity_available)) {
+      response.status(400).json({ error: "Requested equipment is unavailable" });
+      return;
+    }
   }
   const [existing] = await sql`
     select booking_id from booking where client_request_id = ${clientRequestId}
@@ -313,6 +336,15 @@ app.post("/api/bookings", async (request, response) => {
         values (${booking.booking_id}, ${attachment.name}, ${attachment.data}, ${attachment.type ?? "application/octet-stream"})
       `;
     }
+    for (const item of equipment) {
+      const match = String(item).match(/^(.*?) × (\d+)$/);
+      if (!match) continue;
+      await sql`
+        insert into booking_equipment (booking_id, equipment_id, quantity_requested)
+        select ${booking.booking_id}, equipment_id, ${Number(match[2])}
+        from equipment where equipment_name = ${match[1]}
+      `;
+    }
 
     response.status(201).json(booking);
   } catch (error) {
@@ -362,7 +394,8 @@ app.patch("/api/bookings/:id/status", async (request, response) => {
     }
     const [booking] = await sql`
       update booking
-      set status = ${status}
+        set status = ${status},
+          rejection_reason = ${status === "Rejected" ? remarks ?? "No reason provided" : null}
       where booking_id = ${bookingId}
       returning booking_id, status
     `;

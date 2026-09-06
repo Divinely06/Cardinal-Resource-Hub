@@ -47,6 +47,7 @@ type Booking = {
   status: Status;
   equipment: string[];
   purpose: string;
+  rejectionReason?: string;
   requestedByUserId: number;
   roomId: number;
   eventDate?: string;
@@ -55,7 +56,7 @@ type Booking = {
   documents?: { name: string; type: string; data: string }[];
 };
 
-function mapBooking(row: Record<string, string | number>): Booking {
+function mapBooking(row: Record<string, any>): Booking {
   const eventDate = String(row.event_date ?? "").slice(0, 10);
   const parsedDate = eventDate ? new Date(`${eventDate}T00:00:00`) : null;
   const displayDate = parsedDate && !Number.isNaN(parsedDate.getTime())
@@ -75,8 +76,11 @@ function mapBooking(row: Record<string, string | number>): Booking {
     time: `${String(row.start_time).slice(0, 5)} – ${String(row.end_time).slice(0, 5)}`,
     people: Number(row.participant_count),
     status: String(row.status) as Status,
-    equipment: [],
+    equipment: Array.isArray(row.equipment)
+      ? row.equipment.map((item: any) => String(item))
+      : [],
     purpose: String(row.purpose),
+    rejectionReason: row.rejection_reason ? String(row.rejection_reason) : undefined,
     requestedByUserId: Number(row.requested_by_user_id),
     roomId: Number(row.room_id),
     eventDate,
@@ -961,6 +965,7 @@ function StudentView({
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<Booking | null>(null);
   const currentOrganization =
     organizations.find((item) => item.id === activeOrganizationId) ??
     organizations[0];
@@ -988,6 +993,7 @@ function StudentView({
         user={user}
         organization={currentOrganization}
         facilities={availableFacilities}
+        equipment={availableEquipment}
         venue={selectedFacility?.name}
         onCancel={() => setShowForm(false)}
           onSubmit={async (b) => {
@@ -1001,6 +1007,7 @@ function StudentView({
                 requestedByUserId: user?.userId,
                 clientRequestId: b.requestKey,
                 attachment: b.attachment,
+                equipment: b.equipment,
               eventName: b.event,
               participantCount: b.people,
               eventDate: b.eventDate,
@@ -1154,8 +1161,18 @@ function StudentView({
                 ? my.filter((b) => ["Approved", "Prepared"].includes(b.status))
                 : my
             }
+            onSelect={setSelectedRequest}
           />
         </Panel>
+        {selectedRequest && (
+          <Review
+            booking={selectedRequest}
+            role="organization"
+            readOnly
+            onClose={() => setSelectedRequest(null)}
+            onUpdate={async () => undefined}
+          />
+        )}
       </>
     );
   return (
@@ -1216,6 +1233,7 @@ function BookingForm({
   user,
   organization,
   facilities: availableFacilities,
+  equipment: availableEquipment,
   venue: initialVenue,
   onCancel,
   onSubmit,
@@ -1223,6 +1241,7 @@ function BookingForm({
   user?: UserSession;
   organization: Organization;
   facilities: typeof facilities;
+  equipment: typeof equipment;
   venue?: string;
   onCancel: () => void;
   onSubmit: (b: Booking) => Promise<void>;
@@ -1240,6 +1259,7 @@ function BookingForm({
   const [error, setError] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [equipmentRequests, setEquipmentRequests] = useState<Record<string, number>>({});
   return (
     <>
       <Header
@@ -1288,7 +1308,9 @@ function BookingForm({
               time: "9:00 AM – 4:00 PM",
               people: Number(people),
               status: "Faculty review",
-              equipment: [],
+              equipment: Object.entries(equipmentRequests)
+                .filter(([, quantity]) => quantity > 0)
+                .map(([name, quantity]) => `${name} × ${quantity}`),
               purpose,
               requestedByUserId: user?.userId ?? 0,
               roomId: availableFacilities.findIndex((f) => f.name === venue) + 1,
@@ -1364,6 +1386,35 @@ function BookingForm({
                     ))}
                 </select>
               </div>
+            </div>
+          </div>
+          <div className="form-section">
+            <h3>Equipment requests</h3>
+            <div className="equipment-request-list">
+              {availableEquipment.map((item) => (
+                <label key={item.name} className="equipment-request">
+                  <span>
+                    {item.name}
+                    <small>{item.available} available</small>
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={item.available}
+                    value={equipmentRequests[item.name] ?? 0}
+                    onChange={(e) => {
+                      const quantity = Math.max(
+                        0,
+                        Math.min(item.available, Number(e.target.value) || 0),
+                      );
+                      setEquipmentRequests({
+                        ...equipmentRequests,
+                        [item.name]: quantity,
+                      });
+                    }}
+                  />
+                </label>
+              ))}
             </div>
           </div>
           <div className="form-section">
@@ -1574,7 +1625,7 @@ function StaffView({
             role={role}
             readOnly={readOnly || (role === "dean" && selected.status !== "Dean review")}
             onClose={() => setSelected(null)}
-            onUpdate={async (status) => {
+            onUpdate={async (status, remarks) => {
               const reviewerId =
                 role === "faculty"
                     ? user?.userId
@@ -1593,6 +1644,7 @@ function StaffView({
                   body: JSON.stringify({
                     status,
                     userId: reviewerId,
+                    remarks,
                   }),
                 },
               );
@@ -1630,8 +1682,9 @@ function Review({
   role: Role;
   readOnly?: boolean;
   onClose: () => void;
-  onUpdate: (s: Status) => void;
+  onUpdate: (s: Status, remarks?: string) => void;
 }) {
+  const [remarks, setRemarks] = useState("");
   const nextStatus =
     role === "faculty"
       ? "Maintenance review"
@@ -1682,6 +1735,18 @@ function Review({
             <span>Current status</span>
             <Status value={booking.status} />
           </div>
+          {booking.equipment.length > 0 && (
+            <div>
+              <span>Equipment requested</span>
+              <b>{booking.equipment.join(", ")}</b>
+            </div>
+          )}
+          {booking.rejectionReason && (
+            <div>
+              <span>Rejection reason</span>
+              <b>{booking.rejectionReason}</b>
+            </div>
+          )}
           {booking.documents?.map((document) => (
             <div key={document.name}>
               <span>Attached file</span>
@@ -1696,12 +1761,14 @@ function Review({
             <textarea
               placeholder="Add remarks for the organization..."
               rows={3}
+              value={remarks}
+              onChange={(event) => setRemarks(event.target.value)}
             />
             <div className="form-actions">
-              <Button secondary onClick={() => onUpdate("Rejected")}>
+              <Button secondary onClick={() => onUpdate("Rejected", remarks.trim() || "No reason provided")}>
                 Reject
               </Button>
-              <Button onClick={() => onUpdate(nextStatus)}>
+              <Button onClick={() => onUpdate(nextStatus, remarks.trim())}>
                 {approveLabel}
               </Button>
             </div>

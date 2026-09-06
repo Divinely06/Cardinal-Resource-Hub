@@ -16,6 +16,9 @@ async function listBookings(response: Response) {
       to_char(b.start_time, 'HH24:MI') as start_time,
       to_char(b.end_time, 'HH24:MI') as end_time,
       b.purpose, b.rejection_reason, b.status,
+      coalesce((select json_agg(concat(be.quantity_requested, ' × ', e.equipment_name) order by e.equipment_name)
+        from booking_equipment be join equipment e on e.equipment_id = be.equipment_id
+        where be.booking_id = b.booking_id), '[]'::json) as equipment,
       coalesce((select json_agg(json_build_object(
         'name', d.file_name, 'type', d.content_type, 'data', d.file_path
       )) from document d where d.booking_id = b.booking_id), '[]'::json) as documents
@@ -56,6 +59,7 @@ export default async function handler(request: Request, response: Response) {
         purpose,
         clientRequestId,
         attachment,
+        equipment = [],
       } = request.body ?? {};
       const [requester] = requestedByUserId
         ? await sql`
@@ -77,6 +81,10 @@ export default async function handler(request: Request, response: Response) {
         response.status(400).json({ error: "Booking request ID is required" });
         return;
       }
+      if (!Array.isArray(equipment) || equipment.some((item: unknown) => typeof item !== "string")) {
+        response.status(400).json({ error: "Invalid equipment request" });
+        return;
+      }
       if (attachment?.data && attachment.data.length > 14 * 1024 * 1024) {
         response.status(413).json({ error: "Attached files must be 10 MB or smaller" });
         return;
@@ -84,6 +92,21 @@ export default async function handler(request: Request, response: Response) {
       if (attachment?.name && !/\.(pdf|docx)$/i.test(String(attachment.name))) {
         response.status(415).json({ error: "Only PDF and DOCX files are allowed" });
         return;
+      }
+      for (const item of equipment) {
+        const match = String(item).match(/^(.*?) × (\d+)$/);
+        if (!match || Number(match[2]) < 1) {
+          response.status(400).json({ error: "Invalid equipment quantity" });
+          return;
+        }
+        const [equipmentRow] = await sql`
+          select equipment_id, quantity_available from equipment
+          where equipment_name = ${match[1]}
+        `;
+        if (!equipmentRow || Number(match[2]) > Number(equipmentRow.quantity_available)) {
+          response.status(400).json({ error: "Requested equipment is unavailable" });
+          return;
+        }
       }
       const [existing] = await sql`
         select booking_id from booking where client_request_id = ${clientRequestId}
@@ -106,6 +129,15 @@ export default async function handler(request: Request, response: Response) {
         await sql`
           insert into document (booking_id, file_name, file_path, content_type)
           values (${booking.booking_id}, ${attachment.name}, ${attachment.data}, ${attachment.type ?? "application/octet-stream"})
+        `;
+      }
+      for (const item of equipment) {
+        const match = String(item).match(/^(.*?) × (\d+)$/);
+        if (!match) continue;
+        await sql`
+          insert into booking_equipment (booking_id, equipment_id, quantity_requested)
+          select ${booking.booking_id}, equipment_id, ${Number(match[2])}
+          from equipment where equipment_name = ${match[1]}
         `;
       }
       response.status(201).json({ created: true, bookingId: booking.booking_id });
@@ -148,7 +180,10 @@ export default async function handler(request: Request, response: Response) {
         Rejected: 4,
       };
       await sql`
-        update booking set status = ${status} where booking_id = ${bookingId}
+        update booking
+        set status = ${status},
+            rejection_reason = ${status === "Rejected" ? remarks ?? "No reason provided" : null}
+        where booking_id = ${bookingId}
       `;
       if (levels[status]) {
         await sql`
