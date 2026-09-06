@@ -304,6 +304,7 @@ app.patch("/api/bookings/:id/status", async (request, response) => {
     "Maintenance review": 2,
     "Admin review": 3,
     "Dean review": 4,
+    Rejected: 4,
   };
 
   try {
@@ -346,7 +347,7 @@ app.patch("/api/bookings/:id/status", async (request, response) => {
           booking_id, approved_user_id, approval_level, status, date_actioned, remarks
         )
         values (
-          ${bookingId}, ${userId}, ${nextLevel[status]}, 'Approved', now(), ${remarks ?? null}
+          ${bookingId}, ${userId}, ${nextLevel[status]}, ${status === "Rejected" ? "Rejected" : "Approved"}, now(), ${remarks ?? null}
         )
         on conflict (booking_id, approval_level)
         do update set

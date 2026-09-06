@@ -961,6 +961,22 @@ function StudentView({
     organizations[0];
   const my = bookings.filter((b) => b.orgId === activeOrganizationId);
   if (page === "profile") return <Profile role="organization" user={user} />;
+  if (showForm && !currentOrganization)
+    return (
+      <>
+        <Header
+          eyebrow="NEW REQUEST"
+          title="Booking details are still loading"
+          sub="Your organization account has not finished loading. Try again in a moment."
+        />
+        <div className="notice error">
+          We could not load the organization details required to create a request.
+        </div>
+        <Button secondary onClick={() => setShowForm(false)}>
+          Back to overview
+        </Button>
+      </>
+    );
   if (showForm)
     return (
       <BookingForm
@@ -2190,17 +2206,21 @@ export default function App() {
   const [activeOrganizationId, setActiveOrganizationId] = useState(1);
   useEffect(() => {
     Promise.all([
-      fetch(
-        `${apiBase}/api/bookings?role=${user?.role ?? ""}&userId=${user?.userId ?? 0}`,
-      ),
+      user
+        ? fetch(
+            `${apiBase}/api/bookings?role=${user.role}&userId=${user.userId}`,
+          )
+        : Promise.resolve(null),
       fetch(`${apiBase}/api/resources`),
     ])
       .then(async ([bookingsResponse, resourcesResponse]) => {
-        if (!bookingsResponse.ok || !resourcesResponse.ok) {
+        if (bookingsResponse && !bookingsResponse.ok || !resourcesResponse.ok) {
           throw new Error("Unable to load application data");
         }
         return {
-          bookings: (await bookingsResponse.json()) as Record<string, string | number>[],
+          bookings: bookingsResponse
+            ? (await bookingsResponse.json()) as Record<string, string | number>[]
+            : [],
           resources: (await resourcesResponse.json()) as {
             rooms: Record<string, string | number>[];
             equipment: Record<string, string | number>[];
