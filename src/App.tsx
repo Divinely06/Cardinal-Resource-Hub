@@ -211,7 +211,7 @@ const roleInfo: Record<
     label: "Faculty reviewer",
     initials: "MS",
   },
-  admin: { name: "Admin Reyes", label: "Administrator", initials: "AR" },
+  admin: { name: "Administrator", label: "Administrator", initials: "AD" },
   maintenance: {
     name: "Alex Dela Cruz",
     label: "Maintenance handler",
@@ -224,7 +224,7 @@ const roleInfo: Record<
   },
 };
 
-function Logo({ dark = false }: { dark?: boolean }) {
+function Logo({ dark = false, showName = true }: { dark?: boolean; showName?: boolean }) {
   return (
     <div className={`brand ${dark ? "brand-dark" : ""}`}>
       <img
@@ -232,10 +232,12 @@ function Logo({ dark = false }: { dark?: boolean }) {
         src="/mapua-logo.png"
         alt="Mapua University"
       />
-      <span>
-        <b>Cardinal</b>
-        <small>RESOURCE HUB</small>
-      </span>
+      {showName && (
+        <span>
+          <b>Cardinal</b>
+          <small>RESOURCE HUB</small>
+        </span>
+      )}
     </div>
   );
 }
@@ -344,12 +346,13 @@ function Auth({
     }
     if (staffRole) onLogin(staffRole);
     else if (organization) onLogin("organization", organization.id);
-    else setMessage("Use an active Mapúa account or choose a demo account.");
+    else setMessage("Use an active Mapúa account to continue.");
   };
   return (
     <div className="auth-page">
       <section className="auth-visual">
         <div>
+          <Logo dark showName={false} />
           <p className="eyebrow">MAPÚA UNIVERSITY · MAKATI CAMPUS</p>
           <h1>
             Reserve the spaces
@@ -368,9 +371,6 @@ function Auth({
       </section>
       <section className="auth-form">
         <div className="auth-inner">
-          <div className="mobile-logo">
-            <Logo />
-          </div>
           <span className="eyebrow">
             {mode === "login" ? "WELCOME BACK" : "ACCOUNT ACCESS"}
           </span>
@@ -465,36 +465,7 @@ function Auth({
                   : "Update password"}
             </Button>
           </form>
-          {mode === "login" ? (
-            <div className="demo">
-              <b>Demo access</b>
-              <span>Choose a role to explore the working workflows.</span>
-              <div>
-                {organizations.map((organization) => (
-                  <button
-                    key={organization.id}
-                    onClick={() => {
-                      setEmail(organization.email);
-                      setPassword(organization.password);
-                    }}
-                  >
-                    {organization.name}
-                  </button>
-                ))}
-                {(["faculty", "admin", "maintenance", "dean"] as Role[]).map((role) => (
-                  <button
-                    key={role}
-                    onClick={() => {
-                      setEmail(`${role}@mapua.edu.ph`);
-                      setPassword("demo");
-                    }}
-                  >
-                    {roleInfo[role].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
+          {mode !== "login" && (
             <button
               className="back-link"
               onClick={() => {
@@ -506,7 +477,7 @@ function Auth({
             </button>
           )}
           <p className="auth-footer">
-            Cardinal Resource Hub · Mapúa University
+            Cardinal Resource Hub
           </p>
         </div>
       </section>
@@ -595,8 +566,15 @@ function Shell({
               <b>{info.name}</b>
               <small>{info.label}</small>
             </span>
-            <button className="logout" onClick={onLogout}>
-              ↪
+            <button
+              className="logout"
+              onClick={() => {
+                if (window.confirm("Are you sure you want to sign out?")) {
+                  onLogout();
+                }
+              }}
+            >
+              Sign out
             </button>
           </div>
         </div>

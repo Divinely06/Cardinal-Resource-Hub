@@ -302,7 +302,11 @@ button {
 .auth-footer {
   color: #aaa;
   font-size: 10px;
-  margin-top: 60px;
+  margin: 60px auto 0;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 .mobile-logo {
   display: none;
@@ -410,10 +414,17 @@ button {
 }
 .logout {
   margin-left: auto;
-  color: #888;
-  background: none;
-  border: 0;
-  font-size: 18px;
+  color: #c8c9ca;
+  background: transparent;
+  border: 1px solid #55575a;
+  border-radius: 2px;
+  padding: 7px 9px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.logout:hover {
+  color: white;
+  border-color: #888;
 }
 .main {
   flex: 1;
@@ -1464,10 +1475,10 @@ td small {
 
 /* Product workspace refinement: quiet canvas, compact utility rail, deliberate density. */
 .mapua-logo {
-  width: 34px;
-  height: 25px;
+  width: 150px;
+  height: 36px;
   object-fit: contain;
-  object-position: left center;
+  object-position: center;
   filter: grayscale(1) brightness(0) invert(1);
   mix-blend-mode: screen;
 }
@@ -1806,8 +1817,8 @@ td {
   text-align: left;
 }
 .mobile-logo .mapua-logo {
-  width: 72px;
-  height: 52px;
+  width: 168px;
+  height: 40px;
 }
 .mobile-logo .brand b {
   font-size: 20px;
@@ -1831,8 +1842,8 @@ td {
 }
 .sidebar-logo-only {
   display: block;
-  width: 46px;
-  height: 36px;
+  width: 185px;
+  height: 44px;
   object-fit: contain;
   object-position: left center;
   margin: 0 11px 22px;
@@ -1850,7 +1861,7 @@ td {
     margin-bottom: 20px;
   }
   .mobile-logo .mapua-logo {
-    width: 62px;
-    height: 46px;
+    width: 148px;
+    height: 36px;
   }
 }
