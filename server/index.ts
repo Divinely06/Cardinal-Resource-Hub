@@ -82,6 +82,46 @@ app.get("/api/resources", async (_request, response) => {
   }
 });
 
+app.post("/api/organizations", async (request, response) => {
+  const { name, email, password, facultyAdviser } = request.body;
+
+  if (!name || !email || !password) {
+    response.status(400).json({ error: "Organization name, email, and password are required" });
+    return;
+  }
+
+  try {
+    const [adviser] = await sql`
+      select user_id
+      from app_user
+      where full_name = ${facultyAdviser ?? "Prof. Maria Santos"}
+        and role = 'faculty'
+      limit 1
+    `;
+    const [user] = await sql`
+      insert into app_user (full_name, email, password_hash, role)
+      values (${name}, ${email}, crypt(${password}, gen_salt('bf')), 'organization')
+      returning user_id
+    `;
+    const [organization] = await sql`
+      insert into student_organization (
+        org_name, faculty_adviser_id, contact_email, status
+      )
+      values (
+        ${name}, ${adviser?.user_id ?? null}, ${email}, 'Active'
+      )
+      returning org_id, org_name, contact_email, status
+    `;
+    await sql`
+      insert into user_organization (user_id, org_id, membership_role)
+      values (${user.user_id}, ${organization.org_id}, 'Requester')
+    `;
+    response.status(201).json(organization);
+  } catch {
+    response.status(409).json({ error: "Unable to create organization account" });
+  }
+});
+
 app.post("/api/bookings", async (request, response) => {
   const {
     orgId,

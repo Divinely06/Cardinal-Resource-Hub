@@ -386,6 +386,10 @@ button {
   gap: 9px;
   align-items: center;
 }
+.user > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
 .avatar,
 .big-avatar {
   width: 31px;
@@ -403,7 +407,7 @@ button {
 .user small {
   display: block;
   font-size: 10px;
-  max-width: 132px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -418,9 +422,10 @@ button {
   background: transparent;
   border: 1px solid #55575a;
   border-radius: 2px;
-  padding: 7px 9px;
+  padding: 6px 7px;
   font-size: 10px;
   font-weight: 700;
+  flex-shrink: 0;
 }
 .logout:hover {
   color: white;

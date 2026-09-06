@@ -1,6 +1,7 @@
 -- Cardinal Resource Hub PostgreSQL schema for Neon.
 
 create extension if not exists btree_gist;
+create extension if not exists pgcrypto;
 
 create table app_user (
   user_id integer generated always as identity primary key,

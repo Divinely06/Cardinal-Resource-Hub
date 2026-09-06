@@ -511,18 +511,21 @@ function Auth({
 
 function Shell({
   role,
+  organizationName,
   page,
   setPage,
   onLogout,
   children,
 }: {
   role: Role;
+  organizationName?: string;
   page: Page;
   setPage: (p: Page) => void;
   onLogout: () => void;
   children: React.ReactNode;
 }) {
   const info = roleInfo[role];
+  const displayName = role === "organization" ? organizationName ?? info.name : info.name;
   const nav =
     role === "organization"
       ? [
@@ -587,7 +590,7 @@ function Shell({
           <div className="user">
             <span className="avatar">{info.initials}</span>
             <span>
-              <b>{info.name}</b>
+              <b>{displayName}</b>
               <small>{info.label}</small>
             </span>
             <button
@@ -1585,7 +1588,7 @@ function Organizations({
     setFacultyAdviser(organization.facultyAdviser);
     setMessage("");
   };
-  const save = (e: FormEvent) => {
+  const save = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !password.trim()) return;
     if (editing?.id)
@@ -1596,18 +1599,29 @@ function Organizations({
             : item,
         ),
       );
-    else
+    else {
+      const response = await fetch("http://localhost:3001/api/organizations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, password, facultyAdviser }),
+      });
+      if (!response.ok) {
+        setMessage("Unable to create the organization account.");
+        return;
+      }
+      const created = await response.json();
       setOrganizations([
         ...organizations,
         {
-          id: Math.max(0, ...organizations.map((item) => item.id)) + 1,
-          name,
-          email,
-          password,
+          id: Number(created.org_id),
+          name: String(created.org_name),
+          email: String(created.contact_email),
+          password: "",
           facultyAdviser,
           status: "Active",
         },
       ]);
+    }
     setEditing(null);
     setMessage(`${name} is now available as an organization account.`);
   };
@@ -2099,6 +2113,11 @@ export default function App() {
   return (
     <Shell
       role={role}
+      organizationName={
+        role === "organization"
+          ? organizations.find((item) => item.id === activeOrganizationId)?.name
+          : undefined
+      }
       page={page}
       setPage={setPage}
       onLogout={() => setRole(null)}
