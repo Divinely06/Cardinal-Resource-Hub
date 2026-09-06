@@ -4,6 +4,38 @@ import type { Request, Response } from "express";
 const sql = neon(process.env.DATABASE_URL!);
 
 export default async function handler(request: Request, response: Response) {
+  if (request.method === "PATCH") {
+    const { orgId, facultyAdviser } = request.body ?? {};
+    if (!orgId || !facultyAdviser) {
+      response.status(400).json({ error: "Organization and faculty adviser are required" });
+      return;
+    }
+    try {
+      const [adviser] = await sql`
+        select user_id from app_user
+        where full_name = ${facultyAdviser} and role = 'faculty'
+      `;
+      if (!adviser) {
+        response.status(404).json({ error: "Faculty adviser not found" });
+        return;
+      }
+      const [organization] = await sql`
+        update student_organization
+        set faculty_adviser_id = ${adviser.user_id}
+        where org_id = ${orgId}
+        returning org_id, org_name, contact_email, status
+      `;
+      if (!organization) {
+        response.status(404).json({ error: "Organization not found" });
+        return;
+      }
+      response.json(organization);
+    } catch {
+      response.status(409).json({ error: "Unable to update faculty adviser" });
+    }
+    return;
+  }
+
   if (request.method !== "POST") {
     response.status(405).json({ error: "Method not allowed" });
     return;

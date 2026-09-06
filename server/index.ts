@@ -80,9 +80,9 @@ app.get("/api/bookings", async (request, response) => {
         b.event_name,
         b.participant_count,
         b.date_requested,
-        b.event_date,
-        b.start_time,
-        b.end_time,
+        to_char(b.event_date, 'YYYY-MM-DD') as event_date,
+        to_char(b.start_time, 'HH24:MI') as start_time,
+        to_char(b.end_time, 'HH24:MI') as end_time,
         b.purpose,
         b.rejection_reason,
         b.status,
@@ -178,6 +178,37 @@ app.post("/api/organizations", async (request, response) => {
     response.status(201).json(organization);
   } catch {
     response.status(409).json({ error: "Unable to create organization account" });
+  }
+});
+
+app.patch("/api/organizations", async (request, response) => {
+  const { orgId, facultyAdviser } = request.body ?? {};
+  if (!orgId || !facultyAdviser) {
+    response.status(400).json({ error: "Organization and faculty adviser are required" });
+    return;
+  }
+  try {
+    const [adviser] = await sql`
+      select user_id from app_user
+      where full_name = ${facultyAdviser} and role = 'faculty'
+    `;
+    if (!adviser) {
+      response.status(404).json({ error: "Faculty adviser not found" });
+      return;
+    }
+    const [organization] = await sql`
+      update student_organization
+      set faculty_adviser_id = ${adviser.user_id}
+      where org_id = ${orgId}
+      returning org_id, org_name, contact_email, status
+    `;
+    if (!organization) {
+      response.status(404).json({ error: "Organization not found" });
+      return;
+    }
+    response.json(organization);
+  } catch {
+    response.status(409).json({ error: "Unable to update faculty adviser" });
   }
 });
 

@@ -12,7 +12,9 @@ async function listBookings(response: Response) {
   const bookings = await sql`
     select b.booking_id, b.org_id, o.org_name, b.room_id, r.room_name,
       b.requested_by_user_id, b.event_name, b.participant_count,
-      b.date_requested, b.event_date, b.start_time, b.end_time,
+      b.date_requested, to_char(b.event_date, 'YYYY-MM-DD') as event_date,
+      to_char(b.start_time, 'HH24:MI') as start_time,
+      to_char(b.end_time, 'HH24:MI') as end_time,
       b.purpose, b.rejection_reason, b.status,
       coalesce((select json_agg(json_build_object(
         'name', d.file_name, 'type', d.content_type, 'data', d.file_path

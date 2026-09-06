@@ -56,17 +56,22 @@ type Booking = {
 };
 
 function mapBooking(row: Record<string, string | number>): Booking {
+  const eventDate = String(row.event_date ?? "").slice(0, 10);
+  const parsedDate = eventDate ? new Date(`${eventDate}T00:00:00`) : null;
+  const displayDate = parsedDate && !Number.isNaN(parsedDate.getTime())
+    ? parsedDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "2-digit",
+        year: "numeric",
+      })
+    : "Date unavailable";
   return {
     id: String(row.booking_id),
     event: String(row.event_name),
     orgId: Number(row.org_id),
     org: String(row.org_name),
     venue: String(row.room_name),
-    date: new Date(`${row.event_date}T00:00:00`).toLocaleDateString("en-US", {
-      month: "short",
-      day: "2-digit",
-      year: "numeric",
-    }),
+    date: displayDate,
     time: `${String(row.start_time).slice(0, 5)} – ${String(row.end_time).slice(0, 5)}`,
     people: Number(row.participant_count),
     status: String(row.status) as Status,
@@ -74,7 +79,7 @@ function mapBooking(row: Record<string, string | number>): Booking {
     purpose: String(row.purpose),
     requestedByUserId: Number(row.requested_by_user_id),
     roomId: Number(row.room_id),
-    eventDate: String(row.event_date).slice(0, 10),
+    eventDate,
     documents: Array.isArray(row.documents) ? row.documents as Booking["documents"] : [],
   };
 }
@@ -1521,10 +1526,10 @@ function StaffView({
               : page === "history"
                 ? bookings
                 : bookings.filter((b) => b.status === "Admin review")
-            : role === "dean"
+              : role === "dean"
               ? page === "history"
                 ? bookings.filter((b) => ["Approved", "Rejected"].includes(b.status))
-                : bookings.filter((b) => b.status === "Dean review")
+                : bookings
               : page === "bookings"
                 ? bookings.filter((b) => ["Approved", "Prepared"].includes(b.status))
                 : bookings;
@@ -1567,7 +1572,7 @@ function StaffView({
           <Review
             booking={selected}
             role={role}
-            readOnly={readOnly}
+            readOnly={readOnly || (role === "dean" && selected.status !== "Dean review")}
             onClose={() => setSelected(null)}
             onUpdate={async (status) => {
               const reviewerId =
@@ -1744,15 +1749,23 @@ function Organizations({
   const save = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !email.trim() || !password.trim()) return;
-    if (editing?.id)
+    if (editing?.id) {
+      const response = await fetch(`${apiBase}/api/organizations`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orgId: editing.id, facultyAdviser }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        setMessage(result.error ?? "Unable to update the faculty adviser.");
+        return;
+      }
       setOrganizations(
         organizations.map((item) =>
-          item.id === editing.id
-            ? { ...item, name, email, password, facultyAdviser }
-            : item,
+          item.id === editing.id ? { ...item, facultyAdviser } : item,
         ),
       );
-    else {
+    } else {
       const response = await fetch(`${apiBase}/api/organizations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
