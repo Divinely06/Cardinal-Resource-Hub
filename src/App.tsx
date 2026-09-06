@@ -342,7 +342,7 @@ function Auth({
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [message, setMessage] = useState("");
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (mode === "forgot") {
       setMode("reset");
@@ -354,25 +354,25 @@ function Auth({
       setMessage("Password updated. You can now sign in.");
       return;
     }
-    const staffRole = email.startsWith("faculty")
-      ? "faculty"
-      : email.startsWith("admin")
-        ? "admin"
-        : email.startsWith("maintenance")
-          ? "maintenance"
-          : email.startsWith("dean")
-            ? "dean"
-            : null;
-    const organization = organizations.find(
-      (item) => item.email.toLowerCase() === email.toLowerCase(),
-    );
     if (password.length < 4) {
       setMessage("Enter your password to continue.");
       return;
     }
-    if (staffRole) onLogin(staffRole);
-    else if (organization) onLogin("organization", organization.id);
-    else setMessage("Use an active Mapúa account to continue.");
+    try {
+      const response = await fetch(`${apiBase}/api/auth`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setMessage(result.error ?? "Unable to sign in.");
+        return;
+      }
+      onLogin(result.role as Role, result.organizationId ?? undefined);
+    } catch {
+      setMessage("Unable to reach the server. Please try again.");
+    }
   };
   return (
     <div className="auth-page">
