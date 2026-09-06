@@ -2,3 +2,7 @@ node_modules/
 dist/
 screenshots/
 *.tsbuildinfo
+.env
+.env.*
+!*.env.example
+database/root.env
