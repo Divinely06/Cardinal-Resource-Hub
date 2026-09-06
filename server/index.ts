@@ -4,7 +4,7 @@ import { sql } from "./db.js";
 const app = express();
 const port = Number(process.env.PORT ?? 3001);
 
-app.use(express.json());
+app.use(express.json({ limit: "15mb" }));
 app.use((_request, response, next) => {
   response.header("Access-Control-Allow-Origin", "http://localhost:5173");
   response.header("Access-Control-Allow-Headers", "Content-Type");
@@ -65,7 +65,7 @@ app.get("/api/bookings", async (request, response) => {
   try {
     const userId = Number(request.query.userId);
     const role = String(request.query.role ?? "");
-    if (role === "faculty" && !userId) {
+    if (!["organization", "faculty", "maintenance", "admin", "dean"].includes(role) || !userId) {
       response.status(401).json({ error: "Faculty identity is required" });
       return;
     }
@@ -92,7 +92,15 @@ app.get("/api/bookings", async (request, response) => {
       from booking b
       join student_organization o on o.org_id = b.org_id
       join room r on r.room_id = b.room_id
-      where (${role} <> 'faculty' or o.faculty_adviser_id = ${userId || 0})
+      where (
+        (${role} = 'faculty' and o.faculty_adviser_id = ${userId})
+        or (${role} = 'organization' and exists (
+          select 1 from user_organization membership
+          where membership.user_id = ${userId}
+            and membership.org_id = o.org_id and membership.status = 'Active'
+        ))
+        or ${role} in ('maintenance', 'admin', 'dean')
+      )
       order by b.date_requested desc
     `;
     response.json(bookings);
@@ -196,6 +204,10 @@ app.post("/api/bookings", async (request, response) => {
     response.status(413).json({ error: "Attached files must be 10 MB or smaller" });
     return;
   }
+  if (attachment?.name && !/\.(pdf|docx)$/i.test(String(attachment.name))) {
+    response.status(415).json({ error: "Only PDF and DOCX files are allowed" });
+    return;
+  }
   const [existing] = await sql`
     select booking_id from booking where client_request_id = ${clientRequestId}
   `;
@@ -205,7 +217,12 @@ app.post("/api/bookings", async (request, response) => {
   }
 
   const requester = requestedByUserId
-    ? [{ user_id: requestedByUserId }]
+    ? await sql`
+        select u.user_id from app_user u
+        join user_organization membership on membership.user_id = u.user_id
+          and membership.org_id = ${orgId} and membership.status = 'Active'
+        where u.user_id = ${requestedByUserId} and u.role = 'organization'
+      `
     : await sql`
         select u.user_id
         from app_user u
@@ -290,6 +307,27 @@ app.patch("/api/bookings/:id/status", async (request, response) => {
   };
 
   try {
+    const [authorization] = await sql`
+      select b.status as current_status, u.role, o.faculty_adviser_id
+      from booking b
+      join app_user u on u.user_id = ${userId}
+      join student_organization o on o.org_id = b.org_id
+      where b.booking_id = ${bookingId}
+    `;
+    const transitions: Record<string, { current: string; next: string[] }> = {
+      faculty: { current: "Faculty review", next: ["Maintenance review", "Rejected"] },
+      maintenance: { current: "Maintenance review", next: ["Admin review", "Rejected"] },
+      admin: { current: "Admin review", next: ["Dean review", "Rejected"] },
+      dean: { current: "Dean review", next: ["Approved", "Rejected"] },
+    };
+    const rule = authorization ? transitions[authorization.role] : undefined;
+    const assigned = authorization?.role === "faculty"
+      ? authorization.faculty_adviser_id === Number(userId)
+      : Boolean(rule);
+    if (!authorization || !rule || !assigned || authorization.current_status !== rule.current || !rule.next.includes(status)) {
+      response.status(403).json({ error: "You are not authorized for this workflow step" });
+      return;
+    }
     const [booking] = await sql`
       update booking
       set status = ${status}
