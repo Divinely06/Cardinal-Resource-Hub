@@ -8,7 +8,6 @@ Cardinal Resource Hub is a Mapúa University facility and equipment reservation 
 src/                 Active React application and shared styles
 public/              Runtime assets, including the Mapúa logo
 database/            Neon/PostgreSQL schema reference
-reference/           Original project references and source materials
 README.md            Product, workflow, and database documentation
 vite.config.ts       Vite development and production configuration
 ```
