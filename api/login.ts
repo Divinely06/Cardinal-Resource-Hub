@@ -24,6 +24,8 @@ export default async function handler(req: any, res: any) {
     const rows = await sql`
       select
         u.user_id,
+        u.full_name,
+        u.email,
         u.role,
         u.password_hash,
         o.org_id as organization_id
@@ -42,6 +44,8 @@ export default async function handler(req: any, res: any) {
 
     res.status(200).json({
       userId: user.user_id,
+      name: user.full_name,
+      email: user.email,
       role: user.role,
       organizationId: user.organization_id ?? null,
     });

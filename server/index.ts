@@ -29,7 +29,7 @@ app.post("/api/auth", async (request, response) => {
 
   try {
     const [user] = await sql`
-      select u.user_id, u.full_name, u.role, o.org_id, o.org_name,
+      select u.user_id, u.full_name, u.email, u.role, o.org_id, o.org_name,
         (u.password_hash = crypt(${password}, u.password_hash)) as password_matches
       from app_user u
       left join user_organization membership on membership.user_id = u.user_id
@@ -50,9 +50,10 @@ app.post("/api/auth", async (request, response) => {
     }
     response.json({
       userId: user.user_id,
+      name: user.full_name,
+      email: user.email,
       role: user.role,
       organizationId: user.org_id ?? null,
-      name: user.full_name,
       organizationName: user.org_name ?? null,
     });
   } catch {

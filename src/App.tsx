@@ -3,6 +3,10 @@ import { FormEvent, useEffect, useState } from "react";
 const apiBase = import.meta.env.DEV ? "http://localhost:3001" : "";
 
 type Role = "organization" | "faculty" | "admin" | "maintenance" | "dean";
+type UserSession = {
+  name: string;
+  email: string;
+};
 type Status =
   | "Faculty review"
   | "Maintenance review"
@@ -335,7 +339,7 @@ function Auth({
   onLogin,
 }: {
   organizations: Organization[];
-  onLogin: (role: Role, organizationId?: number) => void;
+  onLogin: (role: Role, organizationId?: number, user?: UserSession) => void;
 }) {
   const [mode, setMode] = useState<"login" | "forgot" | "reset">("login");
   const [email, setEmail] = useState("");
@@ -369,7 +373,13 @@ function Auth({
       const result = await response.json();
 
       if (response.ok) {
-        onLogin(result.role as Role, result.organizationId ?? undefined);
+        onLogin(
+          result.role as Role,
+          result.organizationId ?? undefined,
+          result.name && result.email
+            ? { name: result.name, email: result.email }
+            : undefined,
+        );
         return;
       }
       if (response.status !== 503) {
@@ -386,7 +396,15 @@ function Auth({
     const staffRole = ["faculty", "admin", "maintenance", "dean"].find(
       (role) => `${role}@mapua.edu.ph` === email.trim().toLowerCase(),
     ) as Role | undefined;
-    if (staffRole && password === "demo") onLogin(staffRole);
+    const fallbackUser = email.trim().toLowerCase() === "eblancaflor@mapua.edu.ph"
+      ? { name: "Prof. Eblancaflor", email }
+      : undefined;
+    if ((staffRole || fallbackUser) && password === "demo") {
+      onLogin(staffRole ?? "faculty", undefined, fallbackUser ?? {
+        name: roleInfo[staffRole!].name,
+        email,
+      });
+    }
     else if (organization) onLogin("organization", organization.id);
     else setMessage("Use an active Mapúa account to continue.");
   };
@@ -529,6 +547,7 @@ function Auth({
 
 function Shell({
   role,
+  user,
   organizationName,
   page,
   setPage,
@@ -536,6 +555,7 @@ function Shell({
   children,
 }: {
   role: Role;
+  user?: UserSession;
   organizationName?: string;
   page: Page;
   setPage: (p: Page) => void;
@@ -543,7 +563,16 @@ function Shell({
   children: React.ReactNode;
 }) {
   const info = roleInfo[role];
-  const displayName = role === "organization" ? organizationName ?? info.name : info.name;
+  const displayName = role === "organization" ? organizationName ?? info.name : user?.name ?? info.name;
+  const displayInitials = user?.name
+    ? user.name
+        .replace(/^(Prof\. |Dr\. )/, "")
+        .split(/\s+/)
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : info.initials;
   const nav =
     role === "organization"
       ? [
@@ -606,7 +635,7 @@ function Shell({
         </nav>
         <div className="sidebar-bottom">
           <div className="user">
-            <span className="avatar">{info.initials}</span>
+            <span className="avatar">{displayInitials}</span>
             <span>
               <b>{displayName}</b>
               <small>{info.label}</small>
@@ -735,6 +764,7 @@ function BookingList({
 
 function Dashboard({
   role,
+  user,
   bookings,
   facilities: availableFacilities,
   organizationName,
@@ -742,6 +772,7 @@ function Dashboard({
   onBook,
 }: {
   role: Role;
+  user?: UserSession;
   bookings: Booking[];
   facilities: typeof facilities;
   organizationName?: string;
@@ -773,7 +804,7 @@ function Dashboard({
         eyebrow={`${roleInfo[role].label.toUpperCase()} / OVERVIEW`}
         title={
           faculty
-            ? "Good morning, Professor Santos."
+            ? `Good morning, ${user?.name ?? "Faculty reviewer"}.`
             : admin
               ? "Operations overview"
               : dean
@@ -1306,6 +1337,7 @@ function BookingForm({
 
 function StaffView({
   role,
+  user,
   page,
   setPage,
   bookings,
@@ -1316,6 +1348,7 @@ function StaffView({
   setOrganizations,
 }: {
   role: Role;
+  user?: UserSession;
   page: Page;
   setPage: (p: Page) => void;
   bookings: Booking[];
@@ -1486,6 +1519,7 @@ function StaffView({
   return (
     <Dashboard
       role={role}
+      user={user}
       bookings={bookings}
       facilities={availableFacilities}
       onAction={setPage}
@@ -2009,8 +2043,9 @@ function Management({
     </>
   );
 }
-function Profile({ role }: { role: Role }) {
+function Profile({ role, user }: { role: Role; user?: UserSession }) {
   const info = roleInfo[role];
+  const displayName = user?.name ?? info.name;
   const [message, setMessage] = useState("");
   return (
     <>
@@ -2023,12 +2058,10 @@ function Profile({ role }: { role: Role }) {
       <div className="profile-card">
         <span className="big-avatar">{info.initials}</span>
         <div>
-          <h2>{info.name}</h2>
+          <h2>{displayName}</h2>
           <p className="muted">
             {roleInfo[role].label} ·{" "}
-            {role === "organization"
-              ? "ssc@mapua.edu.ph"
-              : `${role}@mapua.edu.ph`}
+            {user?.email ?? (role === "organization" ? "ssc@mapua.edu.ph" : `${role}@mapua.edu.ph`)}
           </p>
         </div>
         <Button
@@ -2059,6 +2092,7 @@ function Profile({ role }: { role: Role }) {
 }
 export default function App() {
   const [role, setRole] = useState<Role | null>(null);
+  const [user, setUser] = useState<UserSession>();
   const [page, setPage] = useState<Page>("dashboard");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [liveFacilities, setLiveFacilities] = useState<typeof facilities>([]);
@@ -2126,8 +2160,9 @@ export default function App() {
     return (
       <Auth
         organizations={organizations}
-        onLogin={(nextRole, organizationId) => {
+        onLogin={(nextRole, organizationId, nextUser) => {
           setRole(nextRole);
+          setUser(nextUser);
           setActiveOrganizationId(organizationId ?? 1);
           setPage("dashboard");
         }}
@@ -2136,6 +2171,7 @@ export default function App() {
   return (
     <Shell
       role={role}
+      user={user}
       organizationName={
         role === "organization"
           ? organizations.find((item) => item.id === activeOrganizationId)?.name
@@ -2159,6 +2195,7 @@ export default function App() {
       ) : (
         <StaffView
           role={role}
+          user={user}
           page={page}
           setPage={setPage}
           bookings={bookings}
