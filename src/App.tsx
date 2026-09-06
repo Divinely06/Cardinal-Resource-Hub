@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
+const apiBase = import.meta.env.DEV ? "http://localhost:3001" : "";
+
 type Role = "organization" | "faculty" | "admin" | "maintenance" | "dean";
 type Status =
   | "Faculty review"
@@ -905,7 +907,7 @@ function StudentView({
         onCancel={() => setShowForm(false)}
         onSubmit={async (b) => {
           const [startTime, endTime] = b.time.split(" – ");
-          const response = await fetch("http://localhost:3001/api/bookings", {
+          const response = await fetch(`${apiBase}/api/bookings`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -920,7 +922,7 @@ function StudentView({
             }),
           });
           if (!response.ok) return;
-          const bookingsResponse = await fetch("http://localhost:3001/api/bookings");
+          const bookingsResponse = await fetch(`${apiBase}/api/bookings`);
           const rows = (await bookingsResponse.json()) as Record<string, string | number>[];
           setBookings(rows.map(mapBooking));
           setShowForm(false);
@@ -1437,7 +1439,9 @@ function StaffView({
                       ? 3
                       : 4;
               const response = await fetch(
-                `http://localhost:3001/api/bookings/${selected.id}/status`,
+                import.meta.env.DEV
+                  ? `${apiBase}/api/bookings/${selected.id}/status`
+                  : `${apiBase}/api/bookings?id=${selected.id}`,
                 {
                   method: "PATCH",
                   headers: { "Content-Type": "application/json" },
@@ -1600,7 +1604,7 @@ function Organizations({
         ),
       );
     else {
-      const response = await fetch("http://localhost:3001/api/organizations", {
+      const response = await fetch(`${apiBase}/api/organizations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password, facultyAdviser }),
@@ -2044,8 +2048,8 @@ export default function App() {
   const [activeOrganizationId, setActiveOrganizationId] = useState(1);
   useEffect(() => {
     Promise.all([
-      fetch("http://localhost:3001/api/bookings"),
-      fetch("http://localhost:3001/api/resources"),
+      fetch(`${apiBase}/api/bookings`),
+      fetch(`${apiBase}/api/resources`),
     ])
       .then(async ([bookingsResponse, resourcesResponse]) => {
         if (!bookingsResponse.ok || !resourcesResponse.ok) {
