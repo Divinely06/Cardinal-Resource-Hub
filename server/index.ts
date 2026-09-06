@@ -61,8 +61,14 @@ app.post("/api/auth", async (request, response) => {
   }
 });
 
-app.get("/api/bookings", async (_request, response) => {
+app.get("/api/bookings", async (request, response) => {
   try {
+    const userId = Number(request.query.userId);
+    const role = String(request.query.role ?? "");
+    if (role === "faculty" && !userId) {
+      response.status(401).json({ error: "Faculty identity is required" });
+      return;
+    }
     const bookings = await sql`
       select
         b.booking_id,
@@ -79,10 +85,14 @@ app.get("/api/bookings", async (_request, response) => {
         b.end_time,
         b.purpose,
         b.rejection_reason,
-        b.status
+        b.status,
+        coalesce((select json_agg(json_build_object(
+          'name', d.file_name, 'type', d.content_type, 'data', d.file_path
+        )) from document d where d.booking_id = b.booking_id), '[]'::json) as documents
       from booking b
       join student_organization o on o.org_id = b.org_id
       join room r on r.room_id = b.room_id
+      where (${role} <> 'faculty' or o.faculty_adviser_id = ${userId || 0})
       order by b.date_requested desc
     `;
     response.json(bookings);
@@ -174,7 +184,25 @@ app.post("/api/bookings", async (request, response) => {
     startTime,
     endTime,
     purpose,
+    clientRequestId,
+    attachment,
   } = request.body;
+
+  if (!clientRequestId) {
+    response.status(400).json({ error: "Booking request ID is required" });
+    return;
+  }
+  if (attachment?.data && attachment.data.length > 14 * 1024 * 1024) {
+    response.status(413).json({ error: "Attached files must be 10 MB or smaller" });
+    return;
+  }
+  const [existing] = await sql`
+    select booking_id from booking where client_request_id = ${clientRequestId}
+  `;
+  if (existing) {
+    response.status(200).json({ created: false, bookingId: existing.booking_id });
+    return;
+  }
 
   const requester = requestedByUserId
     ? [{ user_id: requestedByUserId }]
@@ -213,7 +241,8 @@ app.post("/api/bookings", async (request, response) => {
         event_date,
         start_time,
         end_time,
-        purpose
+        purpose,
+        client_request_id
       )
       values (
         ${orgId},
@@ -224,10 +253,18 @@ app.post("/api/bookings", async (request, response) => {
         ${eventDate},
         ${startTime},
         ${endTime},
-        ${purpose}
+        ${purpose},
+        ${clientRequestId}
       )
       returning booking_id
     `;
+
+    if (attachment?.data && attachment.name) {
+      await sql`
+        insert into document (booking_id, file_name, file_path, content_type)
+        values (${booking.booking_id}, ${attachment.name}, ${attachment.data}, ${attachment.type ?? "application/octet-stream"})
+      `;
+    }
 
     response.status(201).json(booking);
   } catch (error) {

@@ -66,6 +66,7 @@ insert into booking (
   start_time,
   end_time,
   purpose,
+  client_request_id,
   status
 )
 select
@@ -78,12 +79,13 @@ select
   booking_data.start_time,
   booking_data.end_time,
   booking_data.purpose,
+  booking_data.client_request_id,
   booking_data.status
 from (
   values
-    ('Supreme Student Council', 'ssc@mapua.edu.ph', 'Multi-Purpose Hall', 'Leadership Summit 2026', 150, date '2026-09-20', time '08:00', time '17:00', 'Annual leadership training and summit for organization officers.', 'Dean review'),
-    ('IT Students Society', 'itss@mapua.edu.ph', 'Audio-Visual Room', 'Tech Talk Series: AI in Industry', 60, date '2026-09-25', time '13:00', time '17:00', 'Speaker series featuring industry professionals in AI and technology.', 'Faculty review'),
-    ('Business Enthusiasts Club', 'bec@mapua.edu.ph', 'Multi-Purpose Hall', 'Entrepreneurship Fair 2026', 200, date '2026-10-05', time '09:00', time '16:00', 'Annual fair showcasing student business projects.', 'Prepared')
+    ('Supreme Student Council', 'ssc@mapua.edu.ph', 'Multi-Purpose Hall', 'Leadership Summit 2026', 150, date '2026-09-20', time '08:00', time '17:00', 'Annual leadership training and summit for organization officers.', 'seed-leadership-summit-2026', 'Dean review'),
+    ('IT Students Society', 'itss@mapua.edu.ph', 'Audio-Visual Room', 'Tech Talk Series: AI in Industry', 60, date '2026-09-25', time '13:00', time '17:00', 'Speaker series featuring industry professionals in AI and technology.', 'seed-tech-talk-2026', 'Faculty review'),
+    ('Business Enthusiasts Club', 'bec@mapua.edu.ph', 'Multi-Purpose Hall', 'Entrepreneurship Fair 2026', 200, date '2026-10-05', time '09:00', time '16:00', 'Annual fair showcasing student business projects.', 'seed-entrepreneurship-fair-2026', 'Prepared')
 ) as booking_data(
   org_name,
   requester_email,
@@ -94,6 +96,7 @@ from (
   start_time,
   end_time,
   purpose,
+  client_request_id,
   status
 )
 join student_organization organization on organization.org_name = booking_data.org_name

@@ -4,6 +4,8 @@ const apiBase = import.meta.env.DEV ? "http://localhost:3001" : "";
 
 type Role = "organization" | "faculty" | "admin" | "maintenance" | "dean";
 type UserSession = {
+  userId: number;
+  role: Role;
   name: string;
   email: string;
 };
@@ -48,6 +50,9 @@ type Booking = {
   requestedByUserId: number;
   roomId: number;
   eventDate?: string;
+  requestKey?: string;
+  attachment?: { name: string; type: string; data: string };
+  documents?: { name: string; type: string; data: string }[];
 };
 
 function mapBooking(row: Record<string, string | number>): Booking {
@@ -70,6 +75,7 @@ function mapBooking(row: Record<string, string | number>): Booking {
     requestedByUserId: Number(row.requested_by_user_id),
     roomId: Number(row.room_id),
     eventDate: String(row.event_date).slice(0, 10),
+    documents: Array.isArray(row.documents) ? row.documents as Booking["documents"] : [],
   };
 }
 
@@ -283,16 +289,19 @@ function Button({
   onClick,
   secondary = false,
   type = "button",
+  disabled = false,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   secondary?: boolean;
   type?: "button" | "submit";
+  disabled?: boolean;
 }) {
   return (
     <button
       type={type}
       onClick={onClick}
+      disabled={disabled}
       className={`button ${secondary ? "button-secondary" : ""}`}
     >
       {children}
@@ -377,7 +386,7 @@ function Auth({
           result.role as Role,
           result.organizationId ?? undefined,
           result.name && result.email
-            ? { name: result.name, email: result.email }
+            ? { userId: Number(result.userId), role: result.role as Role, name: result.name, email: result.email }
             : undefined,
         );
         return;
@@ -396,11 +405,13 @@ function Auth({
     const staffRole = ["faculty", "admin", "maintenance", "dean"].find(
       (role) => `${role}@mapua.edu.ph` === email.trim().toLowerCase(),
     ) as Role | undefined;
-    const fallbackUser = email.trim().toLowerCase() === "eblancaflor@mapua.edu.ph"
-      ? { name: "Prof. Eblancaflor", email }
+    const fallbackUser: UserSession | undefined = email.trim().toLowerCase() === "eblancaflor@mapua.edu.ph"
+      ? { userId: 0, role: "faculty", name: "Prof. Eblancaflor", email }
       : undefined;
     if ((staffRole || fallbackUser) && password === "demo") {
       onLogin(staffRole ?? "faculty", undefined, fallbackUser ?? {
+        userId: 0,
+        role: staffRole! as Role,
         name: roleInfo[staffRole!].name,
         email,
       });
@@ -636,10 +647,10 @@ function Shell({
         <div className="sidebar-bottom">
           <div className="user">
             <span className="avatar">{displayInitials}</span>
-            <span>
+            <button className="user-details" onClick={() => setPage("profile")}>
               <b>{displayName}</b>
               <small>{info.label}</small>
-            </span>
+            </button>
             <button
               className="logout"
               onClick={() => {
@@ -919,6 +930,7 @@ function Dashboard({
 }
 
 function StudentView({
+  user,
   page,
   setPage,
   bookings,
@@ -928,6 +940,7 @@ function StudentView({
   organizations,
   activeOrganizationId,
 }: {
+  user?: UserSession;
   page: Page;
   setPage: (p: Page) => void;
   bookings: Booking[];
@@ -947,21 +960,26 @@ function StudentView({
     organizations.find((item) => item.id === activeOrganizationId) ??
     organizations[0];
   const my = bookings.filter((b) => b.orgId === activeOrganizationId);
+  if (page === "profile") return <Profile role="organization" user={user} />;
   if (showForm)
     return (
       <BookingForm
+        user={user}
         organization={currentOrganization}
         facilities={availableFacilities}
         venue={selectedFacility?.name}
         onCancel={() => setShowForm(false)}
-        onSubmit={async (b) => {
+          onSubmit={async (b) => {
           const [startTime, endTime] = b.time.split(" – ");
-          const response = await fetch(`${apiBase}/api/bookings`, {
+            const response = await fetch(`${apiBase}/api/bookings`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+              body: JSON.stringify({
               orgId: b.orgId,
               roomId: b.roomId,
+                requestedByUserId: user?.userId,
+                clientRequestId: b.requestKey,
+                attachment: b.attachment,
               eventName: b.event,
               participantCount: b.people,
               eventDate: b.eventDate,
@@ -970,11 +988,15 @@ function StudentView({
               purpose: b.purpose,
             }),
           });
-          if (!response.ok) return;
-          const bookingsResponse = await fetch(`${apiBase}/api/bookings`);
+          if (!response.ok) {
+            throw new Error("Unable to submit booking request");
+          }
+          const bookingsResponse = await fetch(
+            `${apiBase}/api/bookings?role=organization&userId=${user?.userId ?? 0}`,
+          );
           const rows = (await bookingsResponse.json()) as Record<string, string | number>[];
           setBookings(rows.map(mapBooking));
-          setShowForm(false);
+            setShowForm(false);
           setSubmitted(true);
           setPage("requests");
         }}
@@ -1170,17 +1192,19 @@ function Detail({
   );
 }
 function BookingForm({
+  user,
   organization,
   facilities: availableFacilities,
   venue: initialVenue,
   onCancel,
   onSubmit,
 }: {
+  user?: UserSession;
   organization: Organization;
   facilities: typeof facilities;
   venue?: string;
   onCancel: () => void;
-  onSubmit: (b: Booking) => void;
+  onSubmit: (b: Booking) => Promise<void>;
 }) {
   const [event, setEvent] = useState("");
   const [date, setDate] = useState("");
@@ -1193,6 +1217,8 @@ function BookingForm({
   const [people, setPeople] = useState("50");
   const [purpose, setPurpose] = useState("");
   const [error, setError] = useState("");
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   return (
     <>
       <Header
@@ -1203,13 +1229,31 @@ function BookingForm({
       <div className="form-layout">
         <form
           className="panel form-panel"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
             if (!event || !date || !purpose) {
               setError("Event name, date, and purpose are required.");
               return;
             }
-            onSubmit({
+            if (submitting) return;
+            setSubmitting(true);
+            const requestKey = crypto.randomUUID();
+            const selectedAttachment = attachment;
+            const attachmentData = selectedAttachment
+              ? await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(String(reader.result));
+                  reader.onerror = () => reject(new Error("Unable to read file"));
+                  reader.readAsDataURL(selectedAttachment);
+                }).catch(() => "")
+              : "";
+            if (attachment && !attachmentData) {
+              setError("The selected file could not be read.");
+              setSubmitting(false);
+              return;
+            }
+            try {
+              await onSubmit({
               id: `BR-2026-${String(Date.now()).slice(-3)}`,
               event,
               orgId: organization.id,
@@ -1225,10 +1269,18 @@ function BookingForm({
               status: "Faculty review",
               equipment: [],
               purpose,
-              requestedByUserId: 101,
+              requestedByUserId: user?.userId ?? 0,
               roomId: availableFacilities.findIndex((f) => f.name === venue) + 1,
               eventDate: date,
-            });
+              requestKey,
+              attachment: attachmentData && selectedAttachment
+                ? { name: selectedAttachment.name, type: selectedAttachment.type, data: attachmentData }
+                : undefined,
+              });
+            } catch {
+              setError("Unable to submit the request. Please try again.");
+              setSubmitting(false);
+            }
           }}
         >
           <div className="form-section">
@@ -1297,8 +1349,25 @@ function BookingForm({
             <h3>Required documents</h3>
             <div className="upload">
               <b>＋</b>
-              <span>Upload letter of intent or program flow</span>
+              <label htmlFor="booking-attachment">Upload letter of intent or program flow</label>
               <small>PDF or DOCX · up to 10 MB</small>
+              <input
+                id="booking-attachment"
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) => {
+                  const selected = e.target.files?.[0] ?? null;
+                  if (selected && selected.size > 10 * 1024 * 1024) {
+                    setError("Files must be 10 MB or smaller.");
+                    e.target.value = "";
+                    setAttachment(null);
+                    return;
+                  }
+                  setError("");
+                  setAttachment(selected);
+                }}
+              />
+              {attachment && <small className="file-name">{attachment.name}</small>}
             </div>
           </div>
           {error && <div className="notice error">{error}</div>}
@@ -1306,7 +1375,9 @@ function BookingForm({
             <Button secondary onClick={onCancel}>
               Back to resources
             </Button>
-            <Button type="submit">Review and submit</Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting ? "Submitting..." : "Review and submit"}
+            </Button>
           </div>
         </form>
         <aside className="form-aside">
@@ -1412,6 +1483,7 @@ function StaffView({
         </Panel>
       </>
     );
+  if (page === "profile") return <Profile role={role} user={user} />;
   if (page === "requests" || page === "history" || page === "bookings") {
     const queue =
       role === "faculty"
@@ -1484,12 +1556,12 @@ function StaffView({
             onUpdate={async (status) => {
               const reviewerId =
                 role === "faculty"
-                  ? 1
+                    ? user?.userId
                   : role === "admin"
-                    ? 2
+                      ? user?.userId
                     : role === "maintenance"
-                      ? 3
-                      : 4;
+                        ? user?.userId
+                        : user?.userId;
               const response = await fetch(
                 import.meta.env.DEV
                   ? `${apiBase}/api/bookings/${selected.id}/status`
@@ -1589,6 +1661,14 @@ function Review({
             <span>Current status</span>
             <Status value={booking.status} />
           </div>
+          {booking.documents?.map((document) => (
+            <div key={document.name}>
+              <span>Attached file</span>
+              <a href={document.data} download={document.name} target="_blank" rel="noreferrer">
+                {document.name}
+              </a>
+            </div>
+          ))}
         </div>
         {!readOnly && (
           <>
@@ -2046,6 +2126,15 @@ function Management({
 function Profile({ role, user }: { role: Role; user?: UserSession }) {
   const info = roleInfo[role];
   const displayName = user?.name ?? info.name;
+  const displayInitials = user?.name
+    ? user.name
+        .replace(/^(Prof\. |Dr\. )/, "")
+        .split(/\s+/)
+        .map((part) => part[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : info.initials;
   const [message, setMessage] = useState("");
   return (
     <>
@@ -2056,7 +2145,7 @@ function Profile({ role, user }: { role: Role; user?: UserSession }) {
       />
       {message && <div className="notice success">{message}</div>}
       <div className="profile-card">
-        <span className="big-avatar">{info.initials}</span>
+        <span className="big-avatar">{displayInitials}</span>
         <div>
           <h2>{displayName}</h2>
           <p className="muted">
@@ -2101,7 +2190,9 @@ export default function App() {
   const [activeOrganizationId, setActiveOrganizationId] = useState(1);
   useEffect(() => {
     Promise.all([
-      fetch(`${apiBase}/api/bookings`),
+      fetch(
+        `${apiBase}/api/bookings?role=${user?.role ?? ""}&userId=${user?.userId ?? 0}`,
+      ),
       fetch(`${apiBase}/api/resources`),
     ])
       .then(async ([bookingsResponse, resourcesResponse]) => {
@@ -2155,7 +2246,7 @@ export default function App() {
         setLiveEquipment([]);
         setOrganizations([]);
       });
-  }, []);
+  }, [user?.role, user?.userId]);
   if (!role)
     return (
       <Auth
@@ -2183,6 +2274,7 @@ export default function App() {
     >
       {role === "organization" ? (
         <StudentView
+          user={user}
           page={page}
           setPage={setPage}
           bookings={bookings}

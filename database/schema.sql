@@ -65,6 +65,7 @@ create table booking (
   start_time time not null,
   end_time time not null,
   purpose text not null,
+  client_request_id text not null unique,
   rejection_reason text,
   status text not null default 'Faculty review'
     check (
@@ -92,6 +93,7 @@ create table document (
     references booking(booking_id) on delete cascade,
   file_name text not null,
   file_path text not null,
+  content_type text not null default 'application/octet-stream',
   upload_date timestamptz not null default now(),
   signature_status text not null default 'Pending'
     check (signature_status in ('Pending', 'Signed', 'Rejected'))

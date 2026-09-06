@@ -386,9 +386,15 @@ button {
   gap: 9px;
   align-items: center;
 }
-.user > span:nth-child(2) {
+.user-details {
   min-width: 0;
   flex: 1;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 .avatar,
 .big-avatar {
@@ -894,6 +900,18 @@ td small {
   font-size: 10px;
   color: #999;
 }
+.upload input {
+  grid-column: 2;
+  margin-top: 8px;
+  font-size: 11px;
+}
+.file-name {
+  overflow-wrap: anywhere;
+}
+.button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
 .form-actions {
   display: flex;
   justify-content: flex-end;
@@ -1085,10 +1103,20 @@ td small {
   .sidebar .brand {
     padding: 0 5px 12px;
   }
-  .campus,
-  .sidebar-bottom .user,
-  .sidebar-bottom > button {
+  .campus {
     display: none;
+  }
+  .sidebar-bottom {
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+  .sidebar-bottom .user {
+    margin-top: 0;
+    padding: 8px 5px 0;
+  }
+  .user b,
+  .user small {
+    font-size: 11px;
   }
   .sidebar nav {
     display: flex;

@@ -18,6 +18,10 @@ vite.config.ts       Vite development and production configuration
 
 The Dean is the final authority for budget, policy, and campus-rule decisions. Admin manages the resources and performs the operational review immediately before the Dean's decision.
 
+### Existing Neon databases
+
+After deploying the booking workflow changes, run [database/migrations/001_booking_workflow.sql](database/migrations/001_booking_workflow.sql) once against the existing Neon database. It adds the idempotency key and document content type without removing existing bookings or files. Fresh databases should use [database/schema.sql](database/schema.sql).
+
 ## ERD Database Design
 
 The following relational design is intended for Neon PostgreSQL. The executable reference schema is in [database/schema.sql](database/schema.sql).

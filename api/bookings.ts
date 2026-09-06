@@ -2,14 +2,23 @@ import type { Request, Response } from "express";
 import { sql } from "./_db.js";
 
 async function listBookings(response: Response) {
+  const { userId, role } = (response.req as Request).query;
+  if (role === "faculty" && (!userId || Number.isNaN(Number(userId)))) {
+    response.status(401).json({ error: "Faculty identity is required" });
+    return;
+  }
   const bookings = await sql`
     select b.booking_id, b.org_id, o.org_name, b.room_id, r.room_name,
       b.requested_by_user_id, b.event_name, b.participant_count,
       b.date_requested, b.event_date, b.start_time, b.end_time,
-      b.purpose, b.rejection_reason, b.status
+      b.purpose, b.rejection_reason, b.status,
+      coalesce((select json_agg(json_build_object(
+        'name', d.file_name, 'type', d.content_type, 'data', d.file_path
+      )) from document d where d.booking_id = b.booking_id), '[]'::json) as documents
     from booking b
     join student_organization o on o.org_id = b.org_id
     join room r on r.room_id = b.room_id
+    where (${role ?? ""} <> 'faculty' or o.faculty_adviser_id = ${Number(userId) || 0})
     order by b.date_requested desc
   `;
   response.json(bookings);
@@ -33,6 +42,8 @@ export default async function handler(request: Request, response: Response) {
         startTime,
         endTime,
         purpose,
+        clientRequestId,
+        attachment,
       } = request.body ?? {};
       const [requester] = requestedByUserId
         ? [{ user_id: requestedByUserId }]
@@ -45,16 +56,38 @@ export default async function handler(request: Request, response: Response) {
         response.status(400).json({ error: "Missing required booking fields" });
         return;
       }
-      await sql`
+      if (!clientRequestId) {
+        response.status(400).json({ error: "Booking request ID is required" });
+        return;
+      }
+      if (attachment?.data && attachment.data.length > 14 * 1024 * 1024) {
+        response.status(413).json({ error: "Attached files must be 10 MB or smaller" });
+        return;
+      }
+      const [existing] = await sql`
+        select booking_id from booking where client_request_id = ${clientRequestId}
+      `;
+      if (existing) {
+        response.status(200).json({ created: false, bookingId: existing.booking_id });
+        return;
+      }
+      const [booking] = await sql`
         insert into booking (
           org_id, room_id, requested_by_user_id, event_name, participant_count,
-          event_date, start_time, end_time, purpose
+          event_date, start_time, end_time, purpose, client_request_id
         ) values (
           ${orgId}, ${roomId}, ${requester.user_id}, ${eventName}, ${participantCount},
-          ${eventDate}, ${startTime}, ${endTime}, ${purpose}
+          ${eventDate}, ${startTime}, ${endTime}, ${purpose}, ${clientRequestId}
         )
+        returning booking_id
       `;
-      response.status(201).json({ created: true });
+      if (attachment?.data && attachment.name) {
+        await sql`
+          insert into document (booking_id, file_name, file_path, content_type)
+          values (${booking.booking_id}, ${attachment.name}, ${attachment.data}, ${attachment.type ?? "application/octet-stream"})
+        `;
+      }
+      response.status(201).json({ created: true, bookingId: booking.booking_id });
       return;
     }
 
