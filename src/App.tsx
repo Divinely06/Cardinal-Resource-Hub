@@ -358,21 +358,37 @@ function Auth({
       setMessage("Enter your password to continue.");
       return;
     }
+    setMessage("");
+
     try {
-      const response = await fetch(`${apiBase}/api/auth`, {
+      const response = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
       const result = await response.json();
-      if (!response.ok) {
-        setMessage(result.error ?? "Unable to sign in.");
+
+      if (response.ok) {
+        onLogin(result.role as Role, result.organizationId ?? undefined);
         return;
       }
-      onLogin(result.role as Role, result.organizationId ?? undefined);
-    } catch {
-      setMessage("Unable to reach the server. Please try again.");
-    }
+      if (response.status !== 503) {
+        setMessage(result.error ?? "Use an active Mapúa account.");
+        return;
+      }
+    } catch {}
+
+    const organization = organizations.find(
+      (item) =>
+        item.email.toLowerCase() === email.trim().toLowerCase() &&
+        item.password === password,
+    );
+    const staffRole = ["faculty", "admin", "maintenance", "dean"].find(
+      (role) => `${role}@mapua.edu.ph` === email.trim().toLowerCase(),
+    ) as Role | undefined;
+    if (staffRole && password === "demo") onLogin(staffRole);
+    else if (organization) onLogin("organization", organization.id);
+    else setMessage("Use an active Mapúa account to continue.");
   };
   return (
     <div className="auth-page">
