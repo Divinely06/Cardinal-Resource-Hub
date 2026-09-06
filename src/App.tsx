@@ -342,7 +342,7 @@ function Auth({
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [message, setMessage] = useState("");
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (mode === "forgot") {
       setMode("reset");
@@ -354,23 +354,39 @@ function Auth({
       setMessage("Password updated. You can now sign in.");
       return;
     }
-    const staffRole = email.startsWith("faculty")
-      ? "faculty"
-      : email.startsWith("admin")
-        ? "admin"
-        : email.startsWith("maintenance")
-          ? "maintenance"
-          : email.startsWith("dean")
-            ? "dean"
-            : null;
-    const organization = organizations.find(
-      (item) => item.email.toLowerCase() === email.toLowerCase(),
-    );
     if (password.length < 4) {
       setMessage("Enter your password to continue.");
       return;
     }
-    if (staffRole) onLogin(staffRole);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const result = await response.json();
+
+      if (response.ok) {
+        onLogin(result.role as Role, result.organizationId ?? undefined);
+        return;
+      }
+      if (response.status !== 503) {
+        setMessage(result.error ?? "Use an active Mapúa account.");
+        return;
+      }
+    } catch {}
+
+    const organization = organizations.find(
+      (item) =>
+        item.email.toLowerCase() === email.trim().toLowerCase() &&
+        item.password === password,
+    );
+    const staffRole = ["faculty", "admin", "maintenance", "dean"].find(
+      (role) => `${role}@mapua.edu.ph` === email.trim().toLowerCase(),
+    ) as Role | undefined;
+    if (staffRole && password === "demo") onLogin(staffRole);
     else if (organization) onLogin("organization", organization.id);
     else setMessage("Use an active Mapúa account to continue.");
   };

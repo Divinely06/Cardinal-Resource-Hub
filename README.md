@@ -12,6 +12,19 @@ README.md            Product, workflow, and database documentation
 vite.config.ts       Vite development and production configuration
 ```
 
+## Database Login
+
+The deployed login uses the Vercel function at `/api/login`. Add the Neon connection string to Vercel as the `DATABASE_URL` environment variable for the Production environment, then redeploy.
+
+Each account must exist in `app_user`, use one of the roles defined by the schema, and store a bcrypt hash in `password_hash`. For example, generate a hash locally with `node -e "console.log(require('bcryptjs').hashSync('your-password', 12))"`, then insert the returned value:
+
+```sql
+insert into app_user (full_name, email, password_hash, role)
+values ('New User', 'new.user@mapua.edu.ph', '$2b$12$replace_with_generated_hash', 'admin');
+```
+
+Organization accounts should also have a matching `student_organization.contact_email` if their organization-specific records need to load after sign-in.
+
 ## Approval Flow
 
 `Organization submission → Faculty review → Maintenance handling → Admin review → Dean final decision → Approved`
