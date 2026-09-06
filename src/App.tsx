@@ -721,12 +721,14 @@ function Dashboard({
   role,
   bookings,
   facilities: availableFacilities,
+  organizationName,
   onAction,
   onBook,
 }: {
   role: Role;
   bookings: Booking[];
   facilities: typeof facilities;
+  organizationName?: string;
   onAction: (p: Page) => void;
   onBook?: () => void;
 }) {
@@ -762,7 +764,7 @@ function Dashboard({
                 ? "Dean Villanueva, final decisions"
                 : maintenance
                 ? "Ready for today’s setup."
-                : "Good morning, SSC team."
+                : `Good morning, ${organizationName ?? "organization team"}.`
         }
         sub={
           faculty
@@ -1071,6 +1073,7 @@ function StudentView({
       role="organization"
       bookings={my}
       facilities={availableFacilities}
+      organizationName={currentOrganization?.name}
       onAction={setPage}
       onBook={() => setShowForm(true)}
     />
