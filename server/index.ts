@@ -23,13 +23,187 @@ app.get("/api/health", async (_request, response) => {
 app.get("/api/bookings", async (_request, response) => {
   try {
     const bookings = await sql`
-      select *
-      from booking
-      order by date_requested desc
+      select
+        b.booking_id,
+        b.org_id,
+        o.org_name,
+        b.room_id,
+        r.room_name,
+        b.requested_by_user_id,
+        b.event_name,
+        b.participant_count,
+        b.date_requested,
+        b.event_date,
+        b.start_time,
+        b.end_time,
+        b.purpose,
+        b.rejection_reason,
+        b.status
+      from booking b
+      join student_organization o on o.org_id = b.org_id
+      join room r on r.room_id = b.room_id
+      order by b.date_requested desc
     `;
     response.json(bookings);
   } catch {
     response.status(500).json({ error: "Unable to load bookings" });
+  }
+});
+
+app.get("/api/resources", async (_request, response) => {
+  try {
+    const [rooms, equipment, organizations] = await Promise.all([
+      sql`
+        select room_id, room_name, location, capacity, availability_status
+        from room
+        order by room_name
+      `,
+      sql`
+        select equipment_id, equipment_name, category, quantity_available, status
+        from equipment
+        order by equipment_name
+      `,
+      sql`
+        select
+          o.org_id,
+          o.org_name,
+          o.contact_email,
+          o.status,
+          adviser.full_name as faculty_adviser
+        from student_organization o
+        left join app_user adviser on adviser.user_id = o.faculty_adviser_id
+        order by o.org_name
+      `,
+    ]);
+
+    response.json({ rooms, equipment, organizations });
+  } catch {
+    response.status(500).json({ error: "Unable to load resources" });
+  }
+});
+
+app.post("/api/bookings", async (request, response) => {
+  const {
+    orgId,
+    roomId,
+    requestedByUserId,
+    eventName,
+    participantCount,
+    eventDate,
+    startTime,
+    endTime,
+    purpose,
+  } = request.body;
+
+  const requester = requestedByUserId
+    ? [{ user_id: requestedByUserId }]
+    : await sql`
+        select u.user_id
+        from app_user u
+        join student_organization o on o.contact_email = u.email
+        where o.org_id = ${orgId} and u.role = 'organization'
+        limit 1
+      `;
+  const resolvedRequesterId = requester[0]?.user_id;
+
+  if (
+    !orgId ||
+    !roomId ||
+    !resolvedRequesterId ||
+    !eventName ||
+    !participantCount ||
+    !eventDate ||
+    !startTime ||
+    !endTime ||
+    !purpose
+  ) {
+    response.status(400).json({ error: "Missing required booking fields" });
+    return;
+  }
+
+  try {
+    const [booking] = await sql`
+      insert into booking (
+        org_id,
+        room_id,
+        requested_by_user_id,
+        event_name,
+        participant_count,
+        event_date,
+        start_time,
+        end_time,
+        purpose
+      )
+      values (
+        ${orgId},
+        ${roomId},
+        ${resolvedRequesterId},
+        ${eventName},
+        ${participantCount},
+        ${eventDate},
+        ${startTime},
+        ${endTime},
+        ${purpose}
+      )
+      returning booking_id
+    `;
+
+    response.status(201).json(booking);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Booking failed";
+    response.status(409).json({ error: message });
+  }
+});
+
+app.patch("/api/bookings/:id/status", async (request, response) => {
+  const bookingId = Number(request.params.id);
+  const { status, userId, remarks } = request.body;
+
+  if (!Number.isInteger(bookingId) || !status || !userId) {
+    response.status(400).json({ error: "Invalid status update" });
+    return;
+  }
+
+  const nextLevel: Record<string, number> = {
+    "Faculty review": 1,
+    "Maintenance review": 2,
+    "Admin review": 3,
+    "Dean review": 4,
+  };
+
+  try {
+    const [booking] = await sql`
+      update booking
+      set status = ${status}
+      where booking_id = ${bookingId}
+      returning booking_id, status
+    `;
+
+    if (!booking) {
+      response.status(404).json({ error: "Booking not found" });
+      return;
+    }
+
+    if (nextLevel[status]) {
+      await sql`
+        insert into approval (
+          booking_id, approved_user_id, approval_level, status, date_actioned, remarks
+        )
+        values (
+          ${bookingId}, ${userId}, ${nextLevel[status]}, 'Approved', now(), ${remarks ?? null}
+        )
+        on conflict (booking_id, approval_level)
+        do update set
+          approved_user_id = excluded.approved_user_id,
+          status = excluded.status,
+          date_actioned = excluded.date_actioned,
+          remarks = excluded.remarks
+      `;
+    }
+
+    response.json(booking);
+  } catch {
+    response.status(409).json({ error: "Unable to update booking status" });
   }
 });
 

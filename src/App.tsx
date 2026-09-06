@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 type Role = "organization" | "faculty" | "admin" | "maintenance" | "dean";
 type Status =
@@ -41,7 +41,31 @@ type Booking = {
   purpose: string;
   requestedByUserId: number;
   roomId: number;
+  eventDate?: string;
 };
+
+function mapBooking(row: Record<string, string | number>): Booking {
+  return {
+    id: String(row.booking_id),
+    event: String(row.event_name),
+    orgId: Number(row.org_id),
+    org: String(row.org_name),
+    venue: String(row.room_name),
+    date: new Date(`${row.event_date}T00:00:00`).toLocaleDateString("en-US", {
+      month: "short",
+      day: "2-digit",
+      year: "numeric",
+    }),
+    time: `${String(row.start_time).slice(0, 5)} – ${String(row.end_time).slice(0, 5)}`,
+    people: Number(row.participant_count),
+    status: String(row.status) as Status,
+    equipment: [],
+    purpose: String(row.purpose),
+    requestedByUserId: Number(row.requested_by_user_id),
+    roomId: Number(row.room_id),
+    eventDate: String(row.event_date).slice(0, 10),
+  };
+}
 
 const facilities = [
   {
@@ -691,11 +715,13 @@ function BookingList({
 function Dashboard({
   role,
   bookings,
+  facilities: availableFacilities,
   onAction,
   onBook,
 }: {
   role: Role;
   bookings: Booking[];
+  facilities: typeof facilities;
   onAction: (p: Page) => void;
   onBook?: () => void;
 }) {
@@ -704,6 +730,20 @@ function Dashboard({
   const maintenance = role === "maintenance";
   const organization = role === "organization";
   const dean = role === "dean";
+  const pendingReview = bookings.filter((booking) =>
+    ["Faculty review", "Maintenance review", "Admin review", "Dean review"].includes(
+      booking.status,
+    ),
+  ).length;
+  const approvedBookings = bookings.filter((booking) =>
+    ["Approved", "Prepared"].includes(booking.status),
+  ).length;
+  const rejectedBookings = bookings.filter(
+    (booking) => booking.status === "Rejected",
+  ).length;
+  const onTrack = bookings.length
+    ? Math.round(((bookings.length - rejectedBookings) / bookings.length) * 100)
+    : 0;
   return (
     <>
       <Header
@@ -735,27 +775,27 @@ function Dashboard({
       <div className="stats">
         {faculty ? (
           <>
-            <Stat label="Faculty review" value="2" tone="amber" />
-            <Stat label="Approved this term" value="18" tone="green" />
-            <Stat label="Approval rate" value="94%" tone="blue" />
+            <Stat label="Faculty review" value={bookings.filter((booking) => booking.status === "Faculty review").length} tone="amber" />
+            <Stat label="Approved this term" value={approvedBookings} tone="green" />
+            <Stat label="Approval rate" value={`${onTrack}%`} tone="blue" />
           </>
         ) : admin ? (
           <>
-            <Stat label="Final review" value="4" tone="amber" />
-            <Stat label="Approved bookings" value="24" tone="green" />
-            <Stat label="Active venues" value="12" tone="blue" />
+            <Stat label="Final review" value={pendingReview} tone="amber" />
+            <Stat label="Approved bookings" value={approvedBookings} tone="green" />
+            <Stat label="Active venues" value={availableFacilities.filter((facility) => facility.status === "Available").length} tone="blue" />
           </>
         ) : dean ? (
           <>
-            <Stat label="Dean review" value="1" tone="amber" />
-            <Stat label="Final decisions" value="16" tone="green" />
-            <Stat label="Budget checks" value="4" tone="blue" />
+            <Stat label="Dean review" value={bookings.filter((booking) => booking.status === "Dean review").length} tone="amber" />
+            <Stat label="Final decisions" value={bookings.filter((booking) => ["Approved", "Rejected"].includes(booking.status)).length} tone="green" />
+            <Stat label="Budget checks" value={bookings.filter((booking) => booking.status === "Dean review").length} tone="blue" />
           </>
         ) : maintenance ? (
           <>
-            <Stat label="Maintenance queue" value="3" tone="amber" />
-            <Stat label="Ready for pickup" value="8" tone="green" />
-            <Stat label="This week" value="11" tone="blue" />
+            <Stat label="Maintenance queue" value={bookings.filter((booking) => booking.status === "Maintenance review").length} tone="amber" />
+            <Stat label="Ready for pickup" value={bookings.filter((booking) => booking.status === "Prepared").length} tone="green" />
+            <Stat label="This week" value={bookings.length} tone="blue" />
           </>
         ) : organization ? (
           <>
@@ -764,8 +804,8 @@ function Dashboard({
               value={bookings.length}
               tone="amber"
             />
-            <Stat label="Approved bookings" value="1" tone="green" />
-            <Stat label="Available facilities" value="3" tone="blue" />
+            <Stat label="Approved bookings" value={approvedBookings} tone="green" />
+            <Stat label="Available facilities" value={availableFacilities.filter((facility) => facility.status === "Available").length} tone="blue" />
           </>
         ) : null}
       </div>
@@ -791,18 +831,18 @@ function Dashboard({
             </button>
           }
         >
-          <BookingList data={bookings.length ? bookings : initialBookings} />
+          <BookingList data={bookings} />
         </Panel>
         <Panel title={organization ? "Your workflow" : "Workflow status"}>
           <div className="pulse">
             <div>
-              <span className="pulse-number">{organization ? "3" : "86%"}</span>
+              <span className="pulse-number">{organization ? "3" : `${onTrack}%`}</span>
               <span className="muted">
                 {organization ? "approval stages" : "of requests are on track"}
               </span>
             </div>
             <div className="bar">
-              <i style={{ width: organization ? "33%" : "86%" }} />
+                <i style={{ width: organization ? "33%" : `${onTrack}%` }} />
             </div>
             <p>
               {dean
@@ -829,6 +869,8 @@ function StudentView({
   setPage,
   bookings,
   setBookings,
+  facilities: availableFacilities,
+  equipment: availableEquipment,
   organizations,
   activeOrganizationId,
 }: {
@@ -836,6 +878,8 @@ function StudentView({
   setPage: (p: Page) => void;
   bookings: Booking[];
   setBookings: React.Dispatch<React.SetStateAction<Booking[]>>;
+  facilities: typeof facilities;
+  equipment: typeof equipment;
   organizations: Organization[];
   activeOrganizationId: number;
 }) {
@@ -853,10 +897,29 @@ function StudentView({
     return (
       <BookingForm
         organization={currentOrganization}
+        facilities={availableFacilities}
         venue={selectedFacility?.name}
         onCancel={() => setShowForm(false)}
-        onSubmit={(b) => {
-          setBookings([b, ...bookings]);
+        onSubmit={async (b) => {
+          const [startTime, endTime] = b.time.split(" – ");
+          const response = await fetch("http://localhost:3001/api/bookings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              orgId: b.orgId,
+              roomId: b.roomId,
+              eventName: b.event,
+              participantCount: b.people,
+              eventDate: b.eventDate,
+              startTime,
+              endTime,
+              purpose: b.purpose,
+            }),
+          });
+          if (!response.ok) return;
+          const bookingsResponse = await fetch("http://localhost:3001/api/bookings");
+          const rows = (await bookingsResponse.json()) as Record<string, string | number>[];
+          setBookings(rows.map(mapBooking));
           setShowForm(false);
           setSubmitted(true);
           setPage("requests");
@@ -880,7 +943,7 @@ function StudentView({
           />
           <span className="filter-note">
             {
-              facilities.filter((f) =>
+              availableFacilities.filter((f) =>
                 f.name.toLowerCase().includes(query.toLowerCase()),
               ).length
             }{" "}
@@ -895,7 +958,7 @@ function StudentView({
           />
         ) : (
           <div className="venue-list">
-            {facilities
+            {availableFacilities
               .filter((f) => f.name.toLowerCase().includes(query.toLowerCase()))
               .map((f) => (
                 <button
@@ -939,7 +1002,7 @@ function StudentView({
                 </tr>
               </thead>
               <tbody>
-                {equipment.map((e) => (
+                {availableEquipment.map((e) => (
                   <tr key={e.name}>
                     <td>
                       <b>{e.name}</b>
@@ -1002,6 +1065,7 @@ function StudentView({
     <Dashboard
       role="organization"
       bookings={my}
+      facilities={availableFacilities}
       onAction={setPage}
       onBook={() => setShowForm(true)}
     />
@@ -1052,11 +1116,13 @@ function Detail({
 }
 function BookingForm({
   organization,
+  facilities: availableFacilities,
   venue: initialVenue,
   onCancel,
   onSubmit,
 }: {
   organization: Organization;
+  facilities: typeof facilities;
   venue?: string;
   onCancel: () => void;
   onSubmit: (b: Booking) => void;
@@ -1065,8 +1131,9 @@ function BookingForm({
   const [date, setDate] = useState("");
   const [venue, setVenue] = useState(
     initialVenue ??
-      facilities.find((f) => f.status === "Available")?.name ??
-      facilities[0].name,
+      availableFacilities.find((f) => f.status === "Available")?.name ??
+      availableFacilities[0]?.name ??
+      "",
   );
   const [people, setPeople] = useState("50");
   const [purpose, setPurpose] = useState("");
@@ -1104,7 +1171,8 @@ function BookingForm({
               equipment: [],
               purpose,
               requestedByUserId: 101,
-              roomId: facilities.findIndex((f) => f.name === venue) + 1,
+              roomId: availableFacilities.findIndex((f) => f.name === venue) + 1,
+              eventDate: date,
             });
           }}
         >
@@ -1161,7 +1229,7 @@ function BookingForm({
                   value={venue}
                   onChange={(e) => setVenue(e.target.value)}
                 >
-                  {facilities
+                  {availableFacilities
                     .filter((f) => f.status === "Available")
                     .map((f) => (
                       <option key={f.name}>{f.name}</option>
@@ -1218,6 +1286,8 @@ function StaffView({
   setPage,
   bookings,
   setBookings,
+  facilities: availableFacilities,
+  equipment: availableEquipment,
   organizations,
   setOrganizations,
 }: {
@@ -1226,11 +1296,20 @@ function StaffView({
   setPage: (p: Page) => void;
   bookings: Booking[];
   setBookings: React.Dispatch<React.SetStateAction<Booking[]>>;
+  facilities: typeof facilities;
+  equipment: typeof equipment;
   organizations: Organization[];
   setOrganizations: React.Dispatch<React.SetStateAction<Organization[]>>;
 }) {
   const [selected, setSelected] = useState<Booking | null>(null);
-  if (page === "management") return <Management />;
+  if (page === "management") {
+    return (
+      <Management
+        facilities={availableFacilities}
+        equipment={availableEquipment}
+      />
+    );
+  }
   if (page === "organizations")
     return (
       <Organizations
@@ -1258,7 +1337,7 @@ function StaffView({
                 </tr>
               </thead>
               <tbody>
-                {equipment.map((e) => (
+                {availableEquipment.map((e) => (
                   <tr key={e.name}>
                     <td>
                       <b>{e.name}</b>
@@ -1345,7 +1424,27 @@ function StaffView({
             role={role}
             readOnly={readOnly}
             onClose={() => setSelected(null)}
-            onUpdate={(status) => {
+            onUpdate={async (status) => {
+              const reviewerId =
+                role === "faculty"
+                  ? 1
+                  : role === "admin"
+                    ? 2
+                    : role === "maintenance"
+                      ? 3
+                      : 4;
+              const response = await fetch(
+                `http://localhost:3001/api/bookings/${selected.id}/status`,
+                {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    status,
+                    userId: reviewerId,
+                  }),
+                },
+              );
+              if (!response.ok) return;
               setBookings(
                 bookings.map((b) =>
                   b.id === selected.id ? { ...b, status } : b,
@@ -1358,7 +1457,14 @@ function StaffView({
       </>
     );
   }
-  return <Dashboard role={role} bookings={bookings} onAction={setPage} />;
+  return (
+    <Dashboard
+      role={role}
+      bookings={bookings}
+      facilities={availableFacilities}
+      onAction={setPage}
+    />
+  );
 }
 function Review({
   booking,
@@ -1388,7 +1494,7 @@ function Review({
         ? "Confirm maintenance complete"
         : role === "admin"
           ? "Send to Dean"
-        : "Confirm final booking";
+          : "Confirm final booking";
   return (
     <div className="modal-backdrop">
       <div className="modal">
@@ -1634,7 +1740,13 @@ function Organizations({
     </>
   );
 }
-function Management() {
+function Management({
+  facilities: availableFacilities,
+  equipment: availableEquipment,
+}: {
+  facilities: typeof facilities;
+  equipment: typeof equipment;
+}) {
   const [tab, setTab] = useState<"facilities" | "equipment" | "availability">(
     "facilities",
   );
@@ -1642,8 +1754,8 @@ function Management() {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Facility");
   const [message, setMessage] = useState("");
-  const [facilityRows, setFacilityRows] = useState(facilities);
-  const [equipmentRows, setEquipmentRows] = useState(equipment);
+  const [facilityRows, setFacilityRows] = useState(availableFacilities);
+  const [equipmentRows, setEquipmentRows] = useState(availableEquipment);
   const addResource = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -1911,9 +2023,68 @@ function Profile({ role }: { role: Role }) {
 export default function App() {
   const [role, setRole] = useState<Role | null>(null);
   const [page, setPage] = useState<Page>("dashboard");
-  const [bookings, setBookings] = useState(initialBookings);
-  const [organizations, setOrganizations] = useState(initialOrganizations);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [liveFacilities, setLiveFacilities] = useState<typeof facilities>([]);
+  const [liveEquipment, setLiveEquipment] = useState<typeof equipment>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [activeOrganizationId, setActiveOrganizationId] = useState(1);
+  useEffect(() => {
+    Promise.all([
+      fetch("http://localhost:3001/api/bookings"),
+      fetch("http://localhost:3001/api/resources"),
+    ])
+      .then(async ([bookingsResponse, resourcesResponse]) => {
+        if (!bookingsResponse.ok || !resourcesResponse.ok) {
+          throw new Error("Unable to load application data");
+        }
+        return {
+          bookings: (await bookingsResponse.json()) as Record<string, string | number>[],
+          resources: (await resourcesResponse.json()) as {
+            rooms: Record<string, string | number>[];
+            equipment: Record<string, string | number>[];
+            organizations: Record<string, string | number | null>[];
+          },
+        };
+      })
+      .then(({ bookings: rows, resources }) => {
+        setBookings(rows.map(mapBooking));
+        setLiveFacilities(
+          resources.rooms.map((room) => ({
+            name: String(room.room_name),
+            type: "Campus venue",
+            location: String(room.location),
+            capacity: Number(room.capacity),
+            status: String(room.availability_status),
+            detail: `${room.location} venue with capacity for ${room.capacity} people.`,
+          })),
+        );
+        setOrganizations(
+          resources.organizations.map((organization) => ({
+            id: Number(organization.org_id),
+            name: String(organization.org_name),
+            email: String(organization.contact_email),
+            password: "",
+            facultyAdviser: String(organization.faculty_adviser ?? "Unassigned"),
+            status: String(organization.status) as Organization["status"],
+          })),
+        );
+        setLiveEquipment(
+          resources.equipment.map((item) => ({
+            name: String(item.equipment_name),
+            category: String(item.category),
+            available: Number(item.quantity_available),
+            total: Number(item.quantity_available),
+            condition: String(item.status),
+          })),
+        );
+      })
+      .catch(() => {
+        setBookings([]);
+        setLiveFacilities([]);
+        setLiveEquipment([]);
+        setOrganizations([]);
+      });
+  }, []);
   if (!role)
     return (
       <Auth
@@ -1938,6 +2109,8 @@ export default function App() {
           setPage={setPage}
           bookings={bookings}
           setBookings={setBookings}
+          facilities={liveFacilities}
+          equipment={liveEquipment}
           organizations={organizations}
           activeOrganizationId={activeOrganizationId}
         />
@@ -1948,6 +2121,8 @@ export default function App() {
           setPage={setPage}
           bookings={bookings}
           setBookings={setBookings}
+          facilities={liveFacilities}
+          equipment={liveEquipment}
           organizations={organizations}
           setOrganizations={setOrganizations}
         />
