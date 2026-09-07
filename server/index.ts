@@ -25,7 +25,7 @@ app.get("/api/health", async (_request, response) => {
   }
 });
 
-app.post("/api/auth", async (request, response) => {
+app.post(["/api/auth", "/api/login"], async (request, response) => {
   const { email, password } = request.body ?? {};
   if (!email || !password) {
     response.status(400).json({ error: "Email and password are required" });
@@ -214,6 +214,33 @@ app.patch("/api/resources", async (request, response) => {
     response.json(item);
   } catch {
     response.status(409).json({ error: "Unable to update resource" });
+  }
+});
+
+app.post("/api/resources", async (request, response) => {
+  const { type, name, location, capacity, category, quantityAvailable } = request.body ?? {};
+  if (!["room", "equipment"].includes(type) || typeof name !== "string" || !name.trim()) {
+    response.status(400).json({ error: "Resource type and name are required" });
+    return;
+  }
+  try {
+    if (type === "room") {
+      const [room] = await sql`
+        insert into room (room_name, location, capacity, availability_status)
+        values (${name.trim()}, ${String(location ?? "To be assigned")}, ${Number(capacity) > 0 ? Number(capacity) : 1}, 'Available')
+        returning room_id, room_name, location, capacity, availability_status
+      `;
+      response.status(201).json(room);
+      return;
+    }
+    const [item] = await sql`
+      insert into equipment (equipment_name, category, quantity_available, status)
+      values (${name.trim()}, ${String(category ?? "General")}, ${Math.max(0, Number(quantityAvailable) || 0)}, 'Available')
+      returning equipment_id, equipment_name, category, quantity_available, status
+    `;
+    response.status(201).json(item);
+  } catch {
+    response.status(409).json({ error: "Unable to add resource. The name may already exist." });
   }
 });
 

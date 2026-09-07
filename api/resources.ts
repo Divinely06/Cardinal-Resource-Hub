@@ -2,6 +2,33 @@ import type { Request, Response } from "express";
 import { sql } from "./_db.js";
 
 export default async function handler(_request: Request, response: Response) {
+  if (_request.method === "POST") {
+    const { type, name, location, capacity, category, quantityAvailable } = _request.body ?? {};
+    if (!["room", "equipment"].includes(type) || typeof name !== "string" || !name.trim()) {
+      response.status(400).json({ error: "Resource type and name are required" });
+      return;
+    }
+    try {
+      if (type === "room") {
+        const [room] = await sql`
+          insert into room (room_name, location, capacity, availability_status)
+          values (${name.trim()}, ${String(location ?? "To be assigned")}, ${Number(capacity) > 0 ? Number(capacity) : 1}, 'Available')
+          returning room_id, room_name, location, capacity, availability_status
+        `;
+        response.status(201).json(room);
+        return;
+      }
+      const [item] = await sql`
+        insert into equipment (equipment_name, category, quantity_available, status)
+        values (${name.trim()}, ${String(category ?? "General")}, ${Math.max(0, Number(quantityAvailable) || 0)}, 'Available')
+        returning equipment_id, equipment_name, category, quantity_available, status
+      `;
+      response.status(201).json(item);
+    } catch {
+      response.status(409).json({ error: "Unable to add resource. The name may already exist." });
+    }
+    return;
+  }
   if (_request.method === "PATCH") {
     const { type, id, name, location, capacity, availabilityStatus, quantityAvailable, status, category } = _request.body ?? {};
     if (!Number.isInteger(Number(id)) || !["room", "equipment"].includes(type)) {

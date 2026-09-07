@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 
-const apiBase = import.meta.env.DEV ? "http://localhost:3001" : "";
+const apiBase = "";
 
 type Role = "organization" | "faculty" | "admin" | "maintenance" | "dean";
 type UserSession = {
@@ -1917,7 +1917,10 @@ function Organizations({
   };
   const save = async (e: FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || !password.trim()) return;
+    if (!name.trim() || !email.trim() || (editing?.id === 0 && !password.trim())) {
+      setMessage(editing?.id ? "Organization name and email are required." : "Complete all organization fields.");
+      return;
+    }
     if (editing?.id) {
       const response = await fetch(`${apiBase}/api/organizations`, {
         method: "PATCH",
@@ -2126,27 +2129,39 @@ function Management({
       })
       .catch(() => setMessage("Unable to refresh date availability."));
   }, [availabilityDate]);
-  const addResource = (e: FormEvent) => {
+  const addResource = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    if (category === "Equipment")
-      setEquipmentRows([
-        ...equipmentRows,
-        { equipmentId: Math.max(0, ...equipmentRows.map((item) => item.equipmentId)) + 1, name, category: "General", available: 0, total: 0, condition: "New" },
-      ]);
-    else
-      setFacilityRows([
-        ...facilityRows,
-        {
-          roomId: Math.max(0, ...facilityRows.map((facility) => facility.roomId)) + 1,
-          name,
-          type: "Campus resource",
-          location: "To be assigned",
-          capacity: 0,
-          status: "Available",
-          detail: "Newly added campus facility.",
-        },
-      ]);
+    const response = await fetch(`${apiBase}/api/resources`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: category === "Equipment" ? "equipment" : "room", name }),
+    });
+    if (!response.ok) {
+      setMessage((await response.json().catch(() => ({}))).error ?? "Unable to add resource.");
+      return;
+    }
+    const created = await response.json();
+    if (category === "Equipment") {
+      setEquipmentRows((rows) => [...rows, {
+        equipmentId: Number(created.equipment_id),
+        name: String(created.equipment_name),
+        category: String(created.category),
+        available: Number(created.quantity_available),
+        total: Number(created.quantity_available),
+        condition: String(created.status),
+      }]);
+    } else {
+      setFacilityRows((rows) => [...rows, {
+        roomId: Number(created.room_id),
+        name: String(created.room_name),
+        type: "Campus resource",
+        location: String(created.location),
+        capacity: Number(created.capacity),
+        status: String(created.availability_status),
+        detail: `${created.location} venue with capacity for ${created.capacity} people.`,
+      }]);
+    }
     setMessage(`${name} was added to the ${category.toLowerCase()} registry.`);
     setName("");
     setShowAdd(false);
