@@ -2278,6 +2278,9 @@ function Management({
       </div>
       {tab === "facilities" && (
         <Panel title="Facilities">
+          <div className="filter-row resource-date-filter">
+            <label className="field-inline">Availability date <input className="date-input" type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
+          </div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -2299,7 +2302,7 @@ function Management({
                     <td>{f.type}</td>
                     <td>{f.capacity || "—"}</td>
                     <td>
-                      <Status value={f.status} />
+                      <Status value={(dateFacilityAvailability[f.roomId] ?? f.status === "Available") ? "Available" : "Unavailable"} />
                     </td>
                     <td>
                       <button
