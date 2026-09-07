@@ -2111,6 +2111,9 @@ function Management({
   const [availabilityDate, setAvailabilityDate] = useState(new Date().toISOString().slice(0, 10));
   const [dateFacilityAvailability, setDateFacilityAvailability] = useState<Record<number, boolean>>({});
   const [dateEquipmentAvailability, setDateEquipmentAvailability] = useState<Record<string, number>>({});
+  const [availabilityMonth, setAvailabilityMonth] = useState(availabilityDate.slice(0, 7));
+  const [monthFacilityAvailability, setMonthFacilityAvailability] = useState<Record<string, Record<number, boolean>>>({});
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
   const [editingResource, setEditingResource] = useState<
     { type: "room"; id: number; name: string; location: string; capacity: number; status: string }
     | { type: "equipment"; id: number; name: string; category: string; quantity: number; status: string }
@@ -2129,6 +2132,33 @@ function Management({
       })
       .catch(() => setMessage("Unable to refresh date availability."));
   }, [availabilityDate]);
+  const monthDates = (() => {
+    const [year, month] = availabilityMonth.split("-").map(Number);
+    const days = new Date(year, month, 0).getDate();
+    return Array.from({ length: days }, (_, index) => `${availabilityMonth}-${String(index + 1).padStart(2, "0")}`);
+  })();
+  useEffect(() => {
+    let cancelled = false;
+    setAvailabilityLoading(true);
+    Promise.all(monthDates.map(async (date) => {
+      const response = await fetch(`${apiBase}/api/resources?date=${encodeURIComponent(date)}`);
+      if (!response.ok) throw new Error("Unable to load availability");
+      const resources: { rooms: { room_id: number; date_available: boolean }[] } = await response.json();
+      return [date, Object.fromEntries(resources.rooms.map((room) => [room.room_id, room.date_available]))] as const;
+    }))
+      .then((results) => {
+        if (!cancelled) setMonthFacilityAvailability(Object.fromEntries(results));
+      })
+      .catch(() => {
+        if (!cancelled) setMessage("Unable to load the facility availability calendar.");
+      })
+      .finally(() => {
+        if (!cancelled) setAvailabilityLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [availabilityMonth]);
   const addResource = async (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -2337,8 +2367,46 @@ function Management({
       {tab === "availability" && (
         <Panel title="Availability management">
           <div className="filter-row">
-            <label className="field-inline">Availability date <input type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
+            <label className="field-inline">Availability date <input type="date" value={availabilityDate} onChange={(event) => { setAvailabilityDate(event.target.value); setAvailabilityMonth(event.target.value.slice(0, 7)); }} /></label>
           </div>
+          <div className="availability-calendar-header">
+            <button className="text-button" onClick={() => {
+              const [year, month] = availabilityMonth.split("-").map(Number);
+              const previous = new Date(year, month - 2, 1);
+              setAvailabilityMonth(`${previous.getFullYear()}-${String(previous.getMonth() + 1).padStart(2, "0")}`);
+            }}>← Previous month</button>
+            <strong>{new Date(`${availabilityMonth}-02T00:00:00`).toLocaleDateString("en-US", { month: "long", year: "numeric" })}</strong>
+            <button className="text-button" onClick={() => {
+              const [year, month] = availabilityMonth.split("-").map(Number);
+              const next = new Date(year, month, 1);
+              setAvailabilityMonth(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`);
+            }}>Next month →</button>
+          </div>
+          <div className="availability-calendar-wrap">
+            <table className="availability-calendar">
+              <thead>
+                <tr>
+                  <th>Facility</th>
+                  {monthDates.map((date) => <th key={date}>{Number(date.slice(-2))}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {facilityRows.map((facility) => (
+                  <tr key={facility.roomId}>
+                    <th>
+                      <b>{facility.name}</b>
+                      <small>{facility.location}</small>
+                    </th>
+                    {monthDates.map((date) => {
+                      const isAvailable = monthFacilityAvailability[date]?.[facility.roomId] ?? facility.status === "Available";
+                      return <td key={date} className={isAvailable ? "date-available" : "date-unavailable"} title={`${facility.name}: ${isAvailable ? "Available" : "Not available"} on ${date}`}><span>{isAvailable ? "Available" : "Unavailable"}</span></td>;
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="availability-legend"><span className="date-available">Available</span><span className="date-unavailable">Not available</span>{availabilityLoading && <span className="muted">Refreshing dates…</span>}</p>
           <div className="availability-list">
             {facilityRows.map((f) => (
               <div key={f.name}>

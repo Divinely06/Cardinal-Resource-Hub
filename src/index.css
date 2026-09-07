@@ -1344,6 +1344,91 @@ td small {
 .availability-list {
   padding: 4px 20px;
 }
+.availability-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 4px 0 14px;
+  padding: 0 20px;
+}
+.availability-calendar-header strong {
+  font-size: 13px;
+}
+.availability-calendar-wrap {
+  overflow-x: auto;
+  border-top: 1px solid #ededf2;
+  border-bottom: 1px solid #ededf2;
+}
+.availability-calendar {
+  min-width: 980px;
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+}
+.availability-calendar th,
+.availability-calendar td {
+  border-right: 1px solid #f0f0ed;
+  border-bottom: 1px solid #ededf2;
+  padding: 8px 4px;
+  text-align: center;
+  font-size: 9px;
+}
+.availability-calendar thead th {
+  background: #fafaf8;
+  color: #777a80;
+  font-weight: 700;
+}
+.availability-calendar th:first-child {
+  width: 190px;
+  text-align: left;
+  padding-left: 20px;
+}
+.availability-calendar tbody th {
+  background: white;
+  font-weight: 500;
+}
+.availability-calendar tbody th b,
+.availability-calendar tbody th small {
+  display: block;
+}
+.availability-calendar tbody th b {
+  font-size: 11px;
+}
+.availability-calendar tbody th small {
+  color: #9698a1;
+  font-size: 9px;
+  margin-top: 3px;
+}
+.availability-calendar td span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.availability-calendar .date-available {
+  background: #effaf3;
+  color: #39805a;
+}
+.availability-calendar .date-unavailable {
+  background: #fff5f6;
+  color: #a42a3f;
+}
+.availability-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 20px 4px;
+  font-size: 10px;
+}
+.availability-legend > span:not(.muted) {
+  padding: 5px 8px;
+  border: 1px solid currentColor;
+}
+.availability-legend .muted {
+  margin-left: auto;
+  font-size: 10px;
+}
 .availability-list > div {
   display: flex;
   justify-content: space-between;

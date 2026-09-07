@@ -90,7 +90,7 @@ export default async function handler(_request: Request, response: Response) {
     const [rooms, equipment, organizations] = await Promise.all([
       sql`
         select r.room_id, r.room_name, r.location, r.capacity, r.availability_status,
-          ${requestedDate ? sql`not exists (
+          ${requestedDate ? sql`r.availability_status = 'Available' and not exists (
             select 1 from booking b
             where b.room_id = r.room_id
               and b.event_date = ${requestedDate}::date
