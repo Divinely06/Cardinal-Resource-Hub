@@ -8,6 +8,11 @@ app.use(express.json({ limit: "15mb" }));
 app.use((_request, response, next) => {
   response.header("Access-Control-Allow-Origin", "http://localhost:5173");
   response.header("Access-Control-Allow-Headers", "Content-Type");
+  response.header("Access-Control-Allow-Methods", "GET,POST,PATCH,OPTIONS");
+  if (_request.method === "OPTIONS") {
+    response.sendStatus(204);
+    return;
+  }
   next();
 });
 
@@ -117,6 +122,12 @@ app.get("/api/resources", async (request, response) => {
     const requestedDate = typeof request.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(request.query.date)
       ? request.query.date
       : null;
+    const startTime = typeof request.query.startTime === "string" && /^\d{2}:\d{2}$/.test(request.query.startTime)
+      ? request.query.startTime
+      : "00:00";
+    const endTime = typeof request.query.endTime === "string" && /^\d{2}:\d{2}$/.test(request.query.endTime)
+      ? request.query.endTime
+      : "23:59";
     const [rooms, equipment, organizations] = await Promise.all([
       sql`
         select r.room_id, r.room_name, r.location, r.capacity, r.availability_status,
@@ -125,6 +136,8 @@ app.get("/api/resources", async (request, response) => {
             where b.room_id = r.room_id
               and b.event_date = ${requestedDate}::date
               and b.status <> 'Rejected'
+              and (${requestedDate}::date + ${startTime}::time, ${requestedDate}::date + ${endTime}::time)
+                overlaps (b.event_date + b.start_time, b.event_date + b.end_time)
           )` : sql`true`} as date_available
         from room r order by r.room_name
       `,
@@ -137,6 +150,8 @@ app.get("/api/resources", async (request, response) => {
             where be.equipment_id = e.equipment_id
               and b.event_date = ${requestedDate ?? "9999-12-31"}::date
               and b.status <> 'Rejected'
+              and (${requestedDate ?? "9999-12-31"}::date + ${startTime}::time, ${requestedDate ?? "9999-12-31"}::date + ${endTime}::time)
+                overlaps (b.event_date + b.start_time, b.event_date + b.end_time)
           ), 0)) as date_available
         from equipment e order by e.equipment_name
       `,
@@ -156,6 +171,49 @@ app.get("/api/resources", async (request, response) => {
     response.json({ rooms, equipment, organizations });
   } catch {
     response.status(500).json({ error: "Unable to load resources" });
+  }
+});
+
+app.patch("/api/resources", async (request, response) => {
+  const { type, id, name, location, capacity, availabilityStatus, quantityAvailable, status, category } = request.body ?? {};
+  if (!Number.isInteger(Number(id)) || !["room", "equipment"].includes(type)) {
+    response.status(400).json({ error: "A valid resource type and ID are required" });
+    return;
+  }
+  try {
+    if (type === "room") {
+      const [room] = await sql`
+        update room
+        set room_name = coalesce(${name ?? null}, room_name),
+            location = coalesce(${location ?? null}, location),
+            capacity = coalesce(${capacity ? Number(capacity) : null}, capacity),
+            availability_status = coalesce(${availabilityStatus ?? null}, availability_status)
+        where room_id = ${Number(id)}
+        returning room_id, room_name, location, capacity, availability_status
+      `;
+      if (!room) {
+        response.status(404).json({ error: "Facility not found" });
+        return;
+      }
+      response.json(room);
+      return;
+    }
+    const [item] = await sql`
+      update equipment
+      set equipment_name = coalesce(${name ?? null}, equipment_name),
+          category = coalesce(${category ?? null}, category),
+          quantity_available = coalesce(${quantityAvailable === undefined ? null : Number(quantityAvailable)}, quantity_available),
+          status = coalesce(${status ?? null}, status)
+      where equipment_id = ${Number(id)}
+      returning equipment_id, equipment_name, category, quantity_available, status
+    `;
+    if (!item) {
+      response.status(404).json({ error: "Equipment not found" });
+      return;
+    }
+    response.json(item);
+  } catch {
+    response.status(409).json({ error: "Unable to update resource" });
   }
 });
 

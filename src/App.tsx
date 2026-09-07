@@ -130,6 +130,7 @@ const facilities = [
 ];
 const equipment = [
   {
+    equipmentId: 1,
     name: "Wireless Microphone",
     category: "Audio",
     available: 8,
@@ -137,6 +138,7 @@ const equipment = [
     condition: "Good",
   },
   {
+    equipmentId: 2,
     name: "LCD Projector",
     category: "Audiovisual",
     available: 4,
@@ -144,6 +146,7 @@ const equipment = [
     condition: "Good",
   },
   {
+    equipmentId: 3,
     name: "Folding Tables",
     category: "Furniture",
     available: 35,
@@ -151,6 +154,7 @@ const equipment = [
     condition: "Good",
   },
   {
+    equipmentId: 4,
     name: "Monobloc Chairs",
     category: "Furniture",
     available: 150,
@@ -158,6 +162,7 @@ const equipment = [
     condition: "Fair",
   },
   {
+    equipmentId: 5,
     name: "LED Spotlight",
     category: "Lighting",
     available: 2,
@@ -165,6 +170,7 @@ const equipment = [
     condition: "Good",
   },
   {
+    equipmentId: 6,
     name: "Speaker Set",
     category: "Audio",
     available: 0,
@@ -967,6 +973,8 @@ function StudentView({
     (typeof facilities)[0] | null
   >(null);
   const [query, setQuery] = useState("");
+  const [availabilityDate, setAvailabilityDate] = useState("");
+  const [dateFacilities, setDateFacilities] = useState(availableFacilities);
   const [showForm, setShowForm] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<Booking | null>(null);
@@ -974,6 +982,25 @@ function StudentView({
     organizations.find((item) => item.id === activeOrganizationId) ??
     organizations[0];
   const my = bookings.filter((b) => b.orgId === activeOrganizationId);
+  useEffect(() => {
+    if (!availabilityDate) {
+      setDateFacilities(availableFacilities);
+      return;
+    }
+    fetch(`${apiBase}/api/resources?date=${encodeURIComponent(availabilityDate)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load availability")))
+      .then((resources: { rooms: Record<string, string | number | boolean>[] }) => {
+        setDateFacilities(resources.rooms.map((room) => ({
+          ...(availableFacilities.find((item) => item.roomId === Number(room.room_id)) ?? availableFacilities[0]),
+          roomId: Number(room.room_id),
+          name: String(room.room_name),
+          location: String(room.location),
+          capacity: Number(room.capacity),
+          status: room.date_available === false ? "Unavailable" : String(room.availability_status),
+        })));
+      })
+      .catch(() => setDateFacilities(availableFacilities));
+  }, [availabilityDate, availableFacilities]);
   if (page === "profile") return <Profile role="organization" user={user} />;
   if (showForm && !currentOrganization)
     return (
@@ -1049,9 +1076,10 @@ function StudentView({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          <label className="field-inline">Check date <input type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
           <span className="filter-note">
             {
-              availableFacilities.filter((f) =>
+              dateFacilities.filter((f) =>
                 f.name.toLowerCase().includes(query.toLowerCase()),
               ).length
             }{" "}
@@ -1066,7 +1094,7 @@ function StudentView({
           />
         ) : (
           <div className="venue-list">
-            {availableFacilities
+            {dateFacilities
               .filter((f) => f.name.toLowerCase().includes(query.toLowerCase()))
               .map((f) => (
                 <button
@@ -1252,6 +1280,8 @@ function BookingForm({
 }) {
   const [event, setEvent] = useState("");
   const [date, setDate] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("16:00");
   const [venue, setVenue] = useState(
     initialVenue ??
       availableFacilities.find((f) => f.status === "Available")?.name ??
@@ -1267,12 +1297,18 @@ function BookingForm({
   const [dateFacilities, setDateFacilities] = useState(availableFacilities);
   const [dateEquipment, setDateEquipment] = useState(availableEquipment);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [availabilityVersion, setAvailabilityVersion] = useState(0);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setAvailabilityVersion((version) => version + 1), 5000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     if (!date) return;
     let cancelled = false;
     setAvailabilityLoading(true);
-    fetch(`${apiBase}/api/resources?date=${encodeURIComponent(date)}`)
+    fetch(`${apiBase}/api/resources?date=${encodeURIComponent(date)}&startTime=${startTime}&endTime=${endTime}`)
       .then((response) => {
         if (!response.ok) throw new Error("Unable to load availability");
         return response.json();
@@ -1307,7 +1343,7 @@ function BookingForm({
     return () => {
       cancelled = true;
     };
-  }, [date, availableFacilities, availableEquipment]);
+  }, [date, startTime, endTime, availabilityVersion, availableFacilities, availableEquipment]);
 
   useEffect(() => {
     const selected = dateFacilities.find((item) => item.name === venue);
@@ -1327,8 +1363,12 @@ function BookingForm({
           className="panel form-panel"
           onSubmit={async (e) => {
             e.preventDefault();
-            if (!event || !date || !purpose) {
-              setError("Event name, date, and purpose are required.");
+            if (!event || !date || !purpose || !venue) {
+              setError("Event name, date, venue, and purpose are required.");
+              return;
+            }
+            if (startTime >= endTime) {
+              setError("The end time must be later than the start time.");
               return;
             }
             if (submitting) return;
@@ -1360,7 +1400,7 @@ function BookingForm({
                 day: "2-digit",
                 year: "numeric",
               }),
-              time: "9:00 AM – 4:00 PM",
+              time: `${startTime} – ${endTime}`,
               people: Number(people),
               status: "Faculty review",
               equipment: Object.entries(equipmentRequests)
@@ -1415,8 +1455,8 @@ function BookingForm({
               <div className="field">
                 <label>Start and end time</label>
                 <div className="time-row">
-                  <input type="time" defaultValue="09:00" />
-                  <input type="time" defaultValue="16:00" />
+                  <input type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} />
+                  <input type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} />
                 </div>
               </div>
               <div className="field full">
@@ -2068,6 +2108,11 @@ function Management({
   const [availabilityDate, setAvailabilityDate] = useState(new Date().toISOString().slice(0, 10));
   const [dateFacilityAvailability, setDateFacilityAvailability] = useState<Record<number, boolean>>({});
   const [dateEquipmentAvailability, setDateEquipmentAvailability] = useState<Record<string, number>>({});
+  const [editingResource, setEditingResource] = useState<
+    { type: "room"; id: number; name: string; location: string; capacity: number; status: string }
+    | { type: "equipment"; id: number; name: string; category: string; quantity: number; status: string }
+    | null
+  >(null);
 
   useEffect(() => {
     fetch(`/api/resources?date=${encodeURIComponent(availabilityDate)}`)
@@ -2087,7 +2132,7 @@ function Management({
     if (category === "Equipment")
       setEquipmentRows([
         ...equipmentRows,
-        { name, category: "General", available: 0, total: 0, condition: "New" },
+        { equipmentId: Math.max(0, ...equipmentRows.map((item) => item.equipmentId)) + 1, name, category: "General", available: 0, total: 0, condition: "New" },
       ]);
     else
       setFacilityRows([
@@ -2105,6 +2150,47 @@ function Management({
     setMessage(`${name} was added to the ${category.toLowerCase()} registry.`);
     setName("");
     setShowAdd(false);
+  };
+  const saveResource = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingResource) return;
+    const payload = editingResource.type === "room"
+      ? {
+          type: "room",
+          id: editingResource.id,
+          name: editingResource.name.trim(),
+          location: editingResource.location.trim(),
+          capacity: editingResource.capacity,
+          availabilityStatus: editingResource.status,
+        }
+      : {
+          type: "equipment",
+          id: editingResource.id,
+          name: editingResource.name.trim(),
+          category: editingResource.category.trim(),
+          quantityAvailable: editingResource.quantity,
+          status: editingResource.status,
+        };
+    const response = await fetch(`${apiBase}/api/resources`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      setMessage((await response.json().catch(() => ({}))).error ?? "Unable to save resource.");
+      return;
+    }
+    if (editingResource.type === "room") {
+      setFacilityRows((rows) => rows.map((row) => row.roomId === editingResource.id
+        ? { ...row, name: editingResource.name, location: editingResource.location, capacity: editingResource.capacity, status: editingResource.status }
+        : row));
+    } else {
+      setEquipmentRows((rows) => rows.map((row) => row.equipmentId === editingResource.id
+        ? { ...row, name: editingResource.name, category: editingResource.category, available: editingResource.quantity, total: editingResource.quantity, condition: editingResource.status }
+        : row));
+    }
+    setEditingResource(null);
+    setMessage("Resource updated for all users.");
   };
   return (
     <>
@@ -2165,9 +2251,14 @@ function Management({
                     <td>
                       <button
                         className="text-button"
-                        onClick={() =>
-                          setMessage(`${f.name} is ready to edit.`)
-                        }
+                        onClick={() => setEditingResource({
+                          type: "room",
+                          id: f.roomId,
+                          name: f.name,
+                          location: f.location,
+                          capacity: f.capacity,
+                          status: f.status,
+                        })}
                       >
                         Edit
                       </button>
@@ -2209,9 +2300,14 @@ function Management({
                     <td>
                       <button
                         className="text-button"
-                        onClick={() =>
-                          setMessage(`${item.name} is ready to edit.`)
-                        }
+                        onClick={() => setEditingResource({
+                          type: "equipment",
+                          id: item.equipmentId,
+                          name: item.name,
+                          category: item.category,
+                          quantity: item.total,
+                          status: item.condition,
+                        })}
                       >
                         Edit
                       </button>
@@ -2237,21 +2333,20 @@ function Management({
                 </span>
                 <button
                   className={`availability-toggle ${(dateFacilityAvailability[f.roomId] ?? f.status === "Available") ? "on" : ""}`}
-                  onClick={() =>
-                    setFacilityRows(
-                      facilityRows.map((item) =>
-                        item.name === f.name
-                          ? {
-                              ...item,
-                              status:
-                                item.status === "Available"
-                                  ? "Unavailable"
-                                  : "Available",
-                            }
-                          : item,
-                      ),
-                    )
-                  }
+                  onClick={async () => {
+                    const nextStatus = f.status === "Available" ? "Unavailable" : "Available";
+                    const response = await fetch(`${apiBase}/api/resources`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ type: "room", id: f.roomId, availabilityStatus: nextStatus }),
+                    });
+                    if (!response.ok) {
+                      setMessage("Unable to update facility availability.");
+                      return;
+                    }
+                    setFacilityRows((rows) => rows.map((item) => item.roomId === f.roomId ? { ...item, status: nextStatus } : item));
+                    setMessage(`${f.name} is now ${nextStatus.toLowerCase()} for all users.`);
+                  }}
                 >
                   {dateFacilityAvailability[f.roomId] === false ? "Taken" : f.status}
                 </button>
@@ -2298,6 +2393,30 @@ function Management({
               </Button>
               <Button type="submit">Add resource</Button>
             </div>
+          </form>
+        </div>
+      )}
+      {editingResource && (
+        <div className="modal-backdrop">
+          <form className="modal" onSubmit={saveResource}>
+            <button type="button" className="modal-close" onClick={() => setEditingResource(null)}>×</button>
+            <span className="eyebrow">EDIT RESOURCE</span>
+            <h2>Update {editingResource.type === "room" ? "facility" : "equipment"}</h2>
+            <Field label="Name" type="text" value={editingResource.name} onChange={(value) => setEditingResource({ ...editingResource, name: value })} placeholder="Resource name" />
+            {editingResource.type === "room" ? (
+              <>
+                <Field label="Location" type="text" value={editingResource.location} onChange={(value) => setEditingResource({ ...editingResource, location: value })} placeholder="Location" />
+                <Field label="Capacity" type="number" value={String(editingResource.capacity)} onChange={(value) => setEditingResource({ ...editingResource, capacity: Number(value) })} placeholder="Capacity" />
+                <div className="field"><label>Status</label><select value={editingResource.status} onChange={(event) => setEditingResource({ ...editingResource, status: event.target.value })}><option>Available</option><option>Unavailable</option></select></div>
+              </>
+            ) : (
+              <>
+                <Field label="Category" type="text" value={editingResource.category} onChange={(value) => setEditingResource({ ...editingResource, category: value })} placeholder="Category" />
+                <Field label="Total quantity" type="number" value={String(editingResource.quantity)} onChange={(value) => setEditingResource({ ...editingResource, quantity: Number(value) })} placeholder="Quantity" />
+                <div className="field"><label>Status</label><select value={editingResource.status} onChange={(event) => setEditingResource({ ...editingResource, status: event.target.value })}><option>Available</option><option>Unavailable</option><option>Maintenance</option></select></div>
+              </>
+            )}
+            <div className="form-actions"><Button secondary onClick={() => setEditingResource(null)}>Cancel</Button><Button type="submit">Save changes</Button></div>
           </form>
         </div>
       )}
@@ -2418,6 +2537,7 @@ export default function App() {
         );
         setLiveEquipment(
           resources.equipment.map((item) => ({
+            equipmentId: Number(item.equipment_id),
             name: String(item.equipment_name),
             category: String(item.category),
             available: Number(item.quantity_available),
@@ -2444,6 +2564,46 @@ export default function App() {
     const interval = window.setInterval(refreshBookings, 5000);
     return () => window.clearInterval(interval);
   }, [user?.role, user?.userId]);
+  useEffect(() => {
+    const refreshResources = () => {
+      fetch(`${apiBase}/api/resources`)
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to refresh resources")))
+        .then((resources: {
+          rooms: Record<string, string | number>[];
+          equipment: Record<string, string | number>[];
+          organizations: Record<string, string | number | null>[];
+        }) => {
+          setLiveFacilities(resources.rooms.map((room) => ({
+            roomId: Number(room.room_id),
+            name: String(room.room_name),
+            type: "Campus venue",
+            location: String(room.location),
+            capacity: Number(room.capacity),
+            status: String(room.availability_status),
+            detail: `${room.location} venue with capacity for ${room.capacity} people.`,
+          })));
+          setLiveEquipment(resources.equipment.map((item) => ({
+            equipmentId: Number(item.equipment_id),
+            name: String(item.equipment_name),
+            category: String(item.category),
+            available: Number(item.quantity_available),
+            total: Number(item.quantity_available),
+            condition: String(item.status),
+          })));
+          setOrganizations(resources.organizations.map((organization) => ({
+            id: Number(organization.org_id),
+            name: String(organization.org_name),
+            email: String(organization.contact_email),
+            password: "",
+            facultyAdviser: String(organization.faculty_adviser ?? "Unassigned"),
+            status: String(organization.status) as Organization["status"],
+          })));
+        })
+        .catch(() => undefined);
+    };
+    const interval = window.setInterval(refreshResources, 5000);
+    return () => window.clearInterval(interval);
+  }, []);
   if (!role)
     return (
       <Auth

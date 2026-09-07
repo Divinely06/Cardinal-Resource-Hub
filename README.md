@@ -22,6 +22,15 @@ The Dean is the final authority for budget, policy, and campus-rule decisions. A
 
 After deploying the booking workflow changes, run [database/migrations/001_booking_workflow.sql](database/migrations/001_booking_workflow.sql) once against the existing Neon database. It adds the idempotency key and document content type without removing existing bookings or files. Fresh databases should use [database/schema.sql](database/schema.sql).
 
+For local development, set `DATABASE_URL` in `.env`, then run the API and website in separate terminals:
+
+```bash
+npm run api
+npm run dev -- --host 0.0.0.0 --port 5173
+```
+
+Open `http://localhost:5173`. The Vite server proxies `/api` requests to the API on port `3001`. Existing databases should also run [database/migrations/002_date_aware_availability.sql](database/migrations/002_date_aware_availability.sql) to prevent overlapping non-rejected room requests.
+
 ## ERD Database Design
 
 The following relational design is intended for Neon PostgreSQL. The executable reference schema is in [database/schema.sql](database/schema.sql).
