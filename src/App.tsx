@@ -1488,31 +1488,41 @@ function BookingForm({
           <div className="form-section">
             <h3>Equipment requests</h3>
             <div className="equipment-request-list">
-              {dateEquipment.map((item) => (
-                <label key={item.name} className="equipment-request">
-                  <span>
-                    {item.name}
-                    <small>{item.available} available</small>
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    max={item.available}
-                    disabled={item.available < 1 || availabilityLoading}
-                    value={equipmentRequests[item.name] ?? 0}
-                    onChange={(e) => {
-                      const quantity = Math.max(
-                        0,
-                        Math.min(item.available, Number(e.target.value) || 0),
-                      );
-                      setEquipmentRequests({
-                        ...equipmentRequests,
-                        [item.name]: quantity,
-                      });
-                    }}
-                  />
-                </label>
-              ))}
+              {dateEquipment.map((item) => {
+                const available = item.available > 0;
+                return (
+                  <div
+                    key={item.name}
+                    className={`equipment-request ${available ? "is-available" : "is-unavailable"}`}
+                  >
+                    <span className={`equipment-icon ${available ? "good" : "bad"}`}>▦</span>
+                    <span className="equipment-meta">
+                      <b>{item.name}</b>
+                      <small>{item.available} available</small>
+                    </span>
+                    <span className={`dot-label ${available ? "good" : "bad"}`}>
+                      {available ? "Available" : "Unavailable"}
+                    </span>
+                    <input
+                      type="number"
+                      min="0"
+                      max={item.available}
+                      disabled={item.available < 1 || availabilityLoading}
+                      value={equipmentRequests[item.name] ?? 0}
+                      onChange={(e) => {
+                        const quantity = Math.max(
+                          0,
+                          Math.min(item.available, Number(e.target.value) || 0),
+                        );
+                        setEquipmentRequests({
+                          ...equipmentRequests,
+                          [item.name]: quantity,
+                        });
+                      }}
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
           <div className="form-section">
