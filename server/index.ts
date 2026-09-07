@@ -131,7 +131,7 @@ app.get("/api/resources", async (request, response) => {
     const [rooms, equipment, organizations] = await Promise.all([
       sql`
         select r.room_id, r.room_name, r.location, r.capacity, r.availability_status,
-          ${requestedDate ? sql`not exists (
+          ${requestedDate ? sql`r.availability_status = 'Available' and not exists (
             select 1 from booking b
             where b.room_id = r.room_id
               and b.event_date = ${requestedDate}::date
@@ -143,7 +143,7 @@ app.get("/api/resources", async (request, response) => {
       `,
       sql`
         select e.equipment_id, e.equipment_name, e.category, e.quantity_available, e.status,
-          greatest(0, e.quantity_available - coalesce((
+          case when e.status <> 'Available' then 0 else greatest(0, e.quantity_available - coalesce((
             select sum(be.quantity_requested)
             from booking_equipment be
             join booking b on b.booking_id = be.booking_id
@@ -152,7 +152,7 @@ app.get("/api/resources", async (request, response) => {
               and b.status <> 'Rejected'
               and (${requestedDate ?? "9999-12-31"}::date + ${startTime}::time, ${requestedDate ?? "9999-12-31"}::date + ${endTime}::time)
                 overlaps (b.event_date + b.start_time, b.event_date + b.end_time)
-          ), 0)) as date_available
+          ), 0)) end as date_available
         from equipment e order by e.equipment_name
       `,
       sql`

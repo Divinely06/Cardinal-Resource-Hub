@@ -640,6 +640,7 @@ function Shell({
                 ["dashboard", "Overview", "⌂"],
                 ["requests", "Maintenance queue", "☷"],
                 ["equipment", "Equipment", "▣"],
+                ["management", "Manage equipment", "▦"],
                 ["history", "Completed setups", "✓"],
               ]
             : [
@@ -1615,6 +1616,7 @@ function StaffView({
       <Management
         facilities={availableFacilities}
         equipment={availableEquipment}
+        equipmentOnly={role === "maintenance"}
       />
     );
   }
@@ -2103,12 +2105,14 @@ function Organizations({
 function Management({
   facilities: availableFacilities,
   equipment: availableEquipment,
+  equipmentOnly = false,
 }: {
   facilities: typeof facilities;
   equipment: typeof equipment;
+  equipmentOnly?: boolean;
 }) {
   const [tab, setTab] = useState<"facilities" | "equipment" | "availability">(
-    "facilities",
+    equipmentOnly ? "equipment" : "facilities",
   );
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName] = useState("");
@@ -2127,6 +2131,11 @@ function Management({
     | { type: "equipment"; id: number; name: string; category: string; quantity: number; status: string }
     | null
   >(null);
+
+  useEffect(() => {
+    setFacilityRows(availableFacilities);
+    setEquipmentRows(availableEquipment);
+  }, [availableFacilities, availableEquipment]);
 
   useEffect(() => {
     fetch(`/api/resources?date=${encodeURIComponent(availabilityDate)}`)
@@ -2173,14 +2182,14 @@ function Management({
     const response = await fetch(`${apiBase}/api/resources`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: category === "Equipment" ? "equipment" : "room", name }),
+      body: JSON.stringify({ type: category === "Equipment" || equipmentOnly ? "equipment" : "room", name }),
     });
     if (!response.ok) {
       setMessage((await response.json().catch(() => ({}))).error ?? "Unable to add resource.");
       return;
     }
     const created = await response.json();
-    if (category === "Equipment") {
+    if (category === "Equipment" || equipmentOnly) {
       setEquipmentRows((rows) => [...rows, {
         equipmentId: Number(created.equipment_id),
         name: String(created.equipment_name),
@@ -2248,33 +2257,33 @@ function Management({
   return (
     <>
       <Header
-        eyebrow="ADMINISTRATION / RESOURCES"
-        title="Manage campus resources"
-        sub="Keep facility and equipment information accurate for every requester."
+        eyebrow={equipmentOnly ? "MAINTENANCE / EQUIPMENT" : "ADMINISTRATION / RESOURCES"}
+        title={equipmentOnly ? "Manage equipment" : "Manage campus resources"}
+        sub={equipmentOnly ? "Add, edit, and check equipment availability for every setup." : "Keep facility and equipment information accurate for every requester."}
         action={
-          <Button onClick={() => setShowAdd(true)}>＋ Add resource</Button>
+          <Button onClick={() => setShowAdd(true)}>＋ Add {equipmentOnly ? "equipment" : "resource"}</Button>
         }
       />
       {message && <div className="notice success">{message}</div>}
       <div className="tabs">
-        <button
+        {!equipmentOnly && <button
           className={tab === "facilities" ? "selected" : ""}
           onClick={() => setTab("facilities")}
         >
           Facilities <b>{facilityRows.length}</b>
-        </button>
+        </button>}
         <button
           className={tab === "equipment" ? "selected" : ""}
           onClick={() => setTab("equipment")}
         >
           Equipment <b>{equipmentRows.length}</b>
         </button>
-        <button
+        {!equipmentOnly && <button
           className={tab === "availability" ? "selected" : ""}
           onClick={() => setTab("availability")}
         >
           Availability
-        </button>
+        </button>}
       </div>
       {tab === "facilities" && (
         <Panel title="Facilities">
@@ -2461,7 +2470,7 @@ function Management({
             <span className="eyebrow">NEW RESOURCE</span>
             <h2>Add a resource</h2>
             <p className="muted">
-              Add a facility or equipment record to the shared registry.
+              Add a {equipmentOnly ? "equipment" : "facility or equipment"} record to the shared registry.
             </p>
             <Field
               label="Resource name"
@@ -2470,7 +2479,7 @@ function Management({
               onChange={setName}
               placeholder="e.g. Seminar Room B"
             />
-            <div className="field">
+            {!equipmentOnly && <div className="field">
               <label>Resource type</label>
               <select
                 value={category}
@@ -2479,7 +2488,7 @@ function Management({
                 <option>Facility</option>
                 <option>Equipment</option>
               </select>
-            </div>
+            </div>}
             <div className="form-actions">
               <Button secondary onClick={() => setShowAdd(false)}>
                 Cancel
