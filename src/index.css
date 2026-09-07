@@ -951,6 +951,45 @@ td small {
   margin-top: 8px;
   font-size: 11px;
 }
+.equipment-request-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 14px;
+}
+.equipment-request {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 8px 12px;
+  border: 1px solid #d4d0ca;
+  background: #fff;
+}
+.equipment-request span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.equipment-request small {
+  color: #666;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.equipment-request input {
+  width: 64px;
+  height: 32px;
+  padding: 0 6px;
+  text-align: center;
+  border: 1px solid #cbc5bf;
+  border-radius: 4px;
+  background: #fff;
+}
+.equipment-request input:disabled {
+  background: #f1f0ee;
+  color: #888;
+}
 .file-name {
   overflow-wrap: anywhere;
 }
