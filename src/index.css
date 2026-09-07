@@ -641,7 +641,9 @@ button {
   color: #397b58;
 }
 .status-faculty-review,
-.status-admin-review {
+.status-admin-review,
+.status-maintenance-review,
+.status-dean-review {
   background: #fdf5e7;
   color: #9a6b24;
 }
@@ -1370,6 +1372,22 @@ td small {
   background: #fff0f2;
   color: #c8102e;
   border-radius: 5px;
+}
+.venue-icon.good {
+  background: #edf7f1;
+  color: #2d7d52;
+}
+.venue-icon.bad {
+  background: #faedf0;
+  color: #b6485b;
+}
+.equipment-row {
+  grid-template-columns: 36px minmax(0, 1fr) auto auto;
+}
+.equipment-row .dot-label {
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
 }
 .venue-row b,
 .venue-row small {

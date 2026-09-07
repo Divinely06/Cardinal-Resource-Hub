@@ -827,6 +827,11 @@ function Dashboard({
       booking.status,
     ),
   ).length;
+  const inProgressBookings = bookings.filter((booking) =>
+    ["Faculty review", "Maintenance review", "Admin review", "Dean review"].includes(
+      booking.status,
+    ),
+  ).length;
   const approvedBookings = bookings.filter((booking) =>
     ["Approved", "Prepared"].includes(booking.status),
   ).length;
@@ -893,7 +898,7 @@ function Dashboard({
           <>
             <Stat
               label="Requests in progress"
-              value={bookings.length}
+              value={inProgressBookings}
               tone="amber"
             />
             <Stat label="Approved bookings" value={approvedBookings} tone="green" />
@@ -928,19 +933,19 @@ function Dashboard({
         <Panel title={organization ? "Your workflow" : "Workflow status"}>
           <div className="pulse">
             <div>
-              <span className="pulse-number">{organization ? "3" : `${onTrack}%`}</span>
+              <span className="pulse-number">{organization ? "5" : `${onTrack}%`}</span>
               <span className="muted">
-                {organization ? "approval stages" : "of requests are on track"}
+                {organization ? "workflow stages" : "of requests are on track"}
               </span>
             </div>
             <div className="bar">
-                <i style={{ width: organization ? "33%" : `${onTrack}%` }} />
+                <i style={{ width: organization ? "100%" : `${onTrack}%` }} />
             </div>
             <p>
               {dean
                 ? "Review administrator-cleared requests and approve or reject them based on budget, policy, and campus rules."
                 : organization
-                ? "Faculty review comes first, followed by maintenance handling, then final administrator confirmation."
+                ? "Org request → Faculty review → Maintenance handling → Admin confirmation → Dean decision."
                 : "Campus operations are running normally. No system alerts today."}
             </p>
             <Button
@@ -1134,41 +1139,25 @@ function StudentView({
           sub="Check live inventory before adding equipment to a booking request."
         />
         <Panel title="Equipment inventory">
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Equipment</th>
-                  <th>Category</th>
-                  <th>Available</th>
-                  <th>Condition</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {availableEquipment.map((e) => (
-                  <tr key={e.name}>
-                    <td>
-                      <b>{e.name}</b>
-                    </td>
-                    <td>{e.category}</td>
-                    <td>
-                      {e.available} / {e.total}
-                    </td>
-                    <td>{e.condition}</td>
-                    <td>
-                      <span
-                        className={
-                          e.available ? "dot-label good" : "dot-label bad"
-                        }
-                      >
-                        {e.available ? "Available" : "Unavailable"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="venue-list">
+            {availableEquipment.map((item) => {
+              const available = item.available > 0;
+              return (
+                <div className="venue-row equipment-row" key={item.name}>
+                  <span className={`venue-icon ${available ? "good" : "bad"}`}>▦</span>
+                  <span>
+                    <b>{item.name}</b>
+                    <small>{item.category}</small>
+                  </span>
+                  <span className="venue-capacity">
+                    {item.available} / {item.total} ready
+                  </span>
+                  <span className={`dot-label ${available ? "good" : "bad"}`}>
+                    {available ? "Available" : "Unavailable"}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </Panel>
       </>
@@ -1185,7 +1174,7 @@ function StudentView({
                 ? "Approved bookings"
                 : "Booking history"
           }
-          sub="Track your request from faculty review to maintenance handling and final admin confirmation."
+          sub="Track your request through org request, faculty review, maintenance handling, admin confirmation, and the final dean decision."
         />
         {submitted && (
           <div className="notice success">
@@ -1565,6 +1554,10 @@ function BookingForm({
           <span className="eyebrow">WHAT HAPPENS NEXT</span>
           <ol>
             <li>
+              <b>Org request</b>
+              <span>Your organization submits the event plan and required documents.</span>
+            </li>
+            <li>
               <b>Faculty review</b>
               <span>Your adviser checks the event details and documents.</span>
             </li>
@@ -1577,7 +1570,13 @@ function BookingForm({
             <li>
               <b>Admin confirmation</b>
               <span>
-                The administrator completes final management and monitoring.
+                The administrator confirms the booking and final logistics.
+              </span>
+            </li>
+            <li>
+              <b>Dean decision</b>
+              <span>
+                Final approval is made based on budget, policy, and campus rules.
               </span>
             </li>
           </ol>
@@ -2308,7 +2307,10 @@ function Management({
                     <td>{f.type}</td>
                     <td>{f.capacity || "—"}</td>
                     <td>
-                      <Status value={(dateFacilityAvailability[f.roomId] ?? f.status === "Available") ? "Available" : "Unavailable"} />
+                      {(() => {
+                        const facilityAvailable = dateFacilityAvailability[f.roomId] ?? (f.status === "Available");
+                        return <Status value={facilityAvailable ? "Available" : "Unavailable"} />;
+                      })()}
                     </td>
                     <td>
                       <button
