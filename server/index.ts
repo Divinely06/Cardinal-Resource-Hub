@@ -112,18 +112,33 @@ app.get("/api/bookings", async (request, response) => {
   }
 });
 
-app.get("/api/resources", async (_request, response) => {
+app.get("/api/resources", async (request, response) => {
   try {
+    const requestedDate = typeof request.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(request.query.date)
+      ? request.query.date
+      : null;
     const [rooms, equipment, organizations] = await Promise.all([
       sql`
-        select room_id, room_name, location, capacity, availability_status
-        from room
-        order by room_name
+        select r.room_id, r.room_name, r.location, r.capacity, r.availability_status,
+          ${requestedDate ? sql`not exists (
+            select 1 from booking b
+            where b.room_id = r.room_id
+              and b.event_date = ${requestedDate}::date
+              and b.status <> 'Rejected'
+          )` : sql`true`} as date_available
+        from room r order by r.room_name
       `,
       sql`
-        select equipment_id, equipment_name, category, quantity_available, status
-        from equipment
-        order by equipment_name
+        select e.equipment_id, e.equipment_name, e.category, e.quantity_available, e.status,
+          greatest(0, e.quantity_available - coalesce((
+            select sum(be.quantity_requested)
+            from booking_equipment be
+            join booking b on b.booking_id = be.booking_id
+            where be.equipment_id = e.equipment_id
+              and b.event_date = ${requestedDate ?? "9999-12-31"}::date
+              and b.status <> 'Rejected'
+          ), 0)) as date_available
+        from equipment e order by e.equipment_name
       `,
       sql`
         select
@@ -247,6 +262,33 @@ app.post("/api/bookings", async (request, response) => {
     response.status(415).json({ error: "Only PDF and DOCX files are allowed" });
     return;
   }
+  if (!orgId || !roomId || !eventName || !participantCount || !eventDate || !startTime || !endTime || !purpose) {
+    response.status(400).json({ error: "Missing required booking fields" });
+    return;
+  }
+  const [room] = await sql`
+    select room_id
+    from room
+    where room_id = ${Number(roomId)} and availability_status = 'Available'
+  `;
+  if (!room) {
+    response.status(409).json({ error: "This venue is unavailable" });
+    return;
+  }
+  const [roomConflict] = await sql`
+    select booking_id
+    from booking
+    where room_id = ${Number(roomId)}
+      and event_date = ${eventDate}::date
+      and status <> 'Rejected'
+      and (${eventDate}::date + ${startTime}::time, ${eventDate}::date + ${endTime}::time)
+        overlaps (event_date + start_time, event_date + end_time)
+    limit 1
+  `;
+  if (roomConflict) {
+    response.status(409).json({ error: "This venue is already requested for that date and time" });
+    return;
+  }
   for (const item of equipment) {
     const match = String(item).match(/^(.*?) × (\d+)$/);
     if (!match || Number(match[2]) < 1) {
@@ -254,10 +296,21 @@ app.post("/api/bookings", async (request, response) => {
       return;
     }
     const [equipmentRow] = await sql`
-      select equipment_id, quantity_available from equipment
+      select equipment_id, quantity_available, status from equipment
       where equipment_name = ${match[1]}
     `;
-    if (!equipmentRow || Number(match[2]) > Number(equipmentRow.quantity_available)) {
+    const [reserved] = equipmentRow ? await sql`
+      select coalesce(sum(be.quantity_requested), 0) as quantity_reserved
+      from booking_equipment be
+      join booking b on b.booking_id = be.booking_id
+      where be.equipment_id = ${equipmentRow.equipment_id}
+        and b.event_date = ${eventDate}::date
+        and b.status <> 'Rejected'
+        and (${eventDate}::date + ${startTime}::time, ${eventDate}::date + ${endTime}::time)
+          overlaps (b.event_date + b.start_time, b.event_date + b.end_time)
+    ` : [{ quantity_reserved: 0 }];
+    if (!equipmentRow || equipmentRow.status !== "Available"
+      || Number(match[2]) > Number(equipmentRow.quantity_available) - Number(reserved.quantity_reserved)) {
       response.status(400).json({ error: "Requested equipment is unavailable" });
       return;
     }

@@ -90,6 +90,7 @@ function mapBooking(row: Record<string, any>): Booking {
 
 const facilities = [
   {
+    roomId: 1,
     name: "Multi-Purpose Hall",
     type: "Event hall",
     location: "Building A · Ground Floor",
@@ -98,6 +99,7 @@ const facilities = [
     detail: "A flexible hall for assemblies, summits, and large campus events.",
   },
   {
+    roomId: 2,
     name: "Function Room 1",
     type: "Meeting room",
     location: "Building B · 2nd Floor",
@@ -107,6 +109,7 @@ const facilities = [
       "A comfortable room for workshops, consultations, and organization meetings.",
   },
   {
+    roomId: 3,
     name: "Audio-Visual Room",
     type: "AV room",
     location: "Building C · 3rd Floor",
@@ -116,6 +119,7 @@ const facilities = [
       "Integrated projector, sound system, and stage lighting for presentations.",
   },
   {
+    roomId: 4,
     name: "Open Court",
     type: "Outdoor",
     location: "Campus Grounds",
@@ -1260,6 +1264,57 @@ function BookingForm({
   const [attachment, setAttachment] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [equipmentRequests, setEquipmentRequests] = useState<Record<string, number>>({});
+  const [dateFacilities, setDateFacilities] = useState(availableFacilities);
+  const [dateEquipment, setDateEquipment] = useState(availableEquipment);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+
+  useEffect(() => {
+    if (!date) return;
+    let cancelled = false;
+    setAvailabilityLoading(true);
+    fetch(`${apiBase}/api/resources?date=${encodeURIComponent(date)}`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Unable to load availability");
+        return response.json();
+      })
+      .then((resources: {
+        rooms: Record<string, string | number | boolean>[];
+        equipment: Record<string, string | number>[];
+      }) => {
+        if (cancelled) return;
+        setDateFacilities(resources.rooms.map((room) => ({
+          ...(availableFacilities.find((item) => item.roomId === Number(room.room_id)) ?? availableFacilities[0]),
+          roomId: Number(room.room_id),
+          name: String(room.room_name),
+          location: String(room.location),
+          capacity: Number(room.capacity),
+          status: room.date_available === false ? "Unavailable" : String(room.availability_status),
+        })));
+        setDateEquipment(resources.equipment.map((item) => ({
+          ...(availableEquipment.find((resource) => resource.name === String(item.equipment_name)) ?? availableEquipment[0]),
+          name: String(item.equipment_name),
+          available: Number(item.date_available ?? item.quantity_available),
+          total: Number(item.quantity_available),
+          condition: String(item.status),
+        })));
+      })
+      .catch(() => {
+        if (!cancelled) setError("Unable to load availability for this date.");
+      })
+      .finally(() => {
+        if (!cancelled) setAvailabilityLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [date, availableFacilities, availableEquipment]);
+
+  useEffect(() => {
+    const selected = dateFacilities.find((item) => item.name === venue);
+    if (!selected || selected.status !== "Available") {
+      setVenue(dateFacilities.find((item) => item.status === "Available")?.name ?? "");
+    }
+  }, [dateFacilities, venue]);
   return (
     <>
       <Header
@@ -1313,7 +1368,7 @@ function BookingForm({
                 .map(([name, quantity]) => `${name} × ${quantity}`),
               purpose,
               requestedByUserId: user?.userId ?? 0,
-              roomId: availableFacilities.findIndex((f) => f.name === venue) + 1,
+              roomId: dateFacilities.find((f) => f.name === venue)?.roomId ?? 0,
               eventDate: date,
               requestKey,
               attachment: attachmentData && selectedAttachment
@@ -1378,20 +1433,24 @@ function BookingForm({
                 <select
                   value={venue}
                   onChange={(e) => setVenue(e.target.value)}
+                  disabled={availabilityLoading}
                 >
-                  {availableFacilities
+                  {dateFacilities
                     .filter((f) => f.status === "Available")
                     .map((f) => (
                       <option key={f.name}>{f.name}</option>
                     ))}
                 </select>
+                {date && !availabilityLoading && dateFacilities.every((f) => f.status !== "Available") && (
+                  <small className="error-text">No venue is available on this date.</small>
+                )}
               </div>
             </div>
           </div>
           <div className="form-section">
             <h3>Equipment requests</h3>
             <div className="equipment-request-list">
-              {availableEquipment.map((item) => (
+              {dateEquipment.map((item) => (
                 <label key={item.name} className="equipment-request">
                   <span>
                     {item.name}
@@ -1401,6 +1460,7 @@ function BookingForm({
                     type="number"
                     min="0"
                     max={item.available}
+                    disabled={item.available < 1 || availabilityLoading}
                     value={equipmentRequests[item.name] ?? 0}
                     onChange={(e) => {
                       const quantity = Math.max(
@@ -1651,7 +1711,9 @@ function StaffView({
               if (!response.ok) return;
               setBookings(
                 bookings.map((b) =>
-                  b.id === selected.id ? { ...b, status } : b,
+                  b.id === selected.id
+                    ? { ...b, status, rejectionReason: status === "Rejected" ? remarks : undefined }
+                    : b,
                 ),
               );
               setSelected(null);
@@ -2003,6 +2065,22 @@ function Management({
   const [message, setMessage] = useState("");
   const [facilityRows, setFacilityRows] = useState(availableFacilities);
   const [equipmentRows, setEquipmentRows] = useState(availableEquipment);
+  const [availabilityDate, setAvailabilityDate] = useState(new Date().toISOString().slice(0, 10));
+  const [dateFacilityAvailability, setDateFacilityAvailability] = useState<Record<number, boolean>>({});
+  const [dateEquipmentAvailability, setDateEquipmentAvailability] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    fetch(`/api/resources?date=${encodeURIComponent(availabilityDate)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load availability")))
+      .then((resources: {
+        rooms: { room_id: number; date_available: boolean }[];
+        equipment: { equipment_name: string; date_available: number }[];
+      }) => {
+        setDateFacilityAvailability(Object.fromEntries(resources.rooms.map((room) => [room.room_id, room.date_available])));
+        setDateEquipmentAvailability(Object.fromEntries(resources.equipment.map((item) => [item.equipment_name, item.date_available])));
+      })
+      .catch(() => setMessage("Unable to refresh date availability."));
+  }, [availabilityDate]);
   const addResource = (e: FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -2015,6 +2093,7 @@ function Management({
       setFacilityRows([
         ...facilityRows,
         {
+          roomId: Math.max(0, ...facilityRows.map((facility) => facility.roomId)) + 1,
           name,
           type: "Campus resource",
           location: "To be assigned",
@@ -2102,6 +2181,9 @@ function Management({
       )}
       {tab === "equipment" && (
         <Panel title="Equipment inventory">
+          <div className="filter-row">
+            <label className="field-inline">Availability date <input type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
+          </div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -2121,7 +2203,7 @@ function Management({
                     </td>
                     <td>{item.category}</td>
                     <td>
-                      {item.available} / {item.total}
+                      {dateEquipmentAvailability[item.name] ?? item.available} / {item.total}
                     </td>
                     <td>{item.condition}</td>
                     <td>
@@ -2143,6 +2225,9 @@ function Management({
       )}
       {tab === "availability" && (
         <Panel title="Availability management">
+          <div className="filter-row">
+            <label className="field-inline">Availability date <input type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
+          </div>
           <div className="availability-list">
             {facilityRows.map((f) => (
               <div key={f.name}>
@@ -2151,7 +2236,7 @@ function Management({
                   <small>{f.location}</small>
                 </span>
                 <button
-                  className={`availability-toggle ${f.status === "Available" ? "on" : ""}`}
+                  className={`availability-toggle ${(dateFacilityAvailability[f.roomId] ?? f.status === "Available") ? "on" : ""}`}
                   onClick={() =>
                     setFacilityRows(
                       facilityRows.map((item) =>
@@ -2168,7 +2253,7 @@ function Management({
                     )
                   }
                 >
-                  {f.status}
+                  {dateFacilityAvailability[f.roomId] === false ? "Taken" : f.status}
                 </button>
               </div>
             ))}
@@ -2312,6 +2397,7 @@ export default function App() {
         setBookings(rows.map(mapBooking));
         setLiveFacilities(
           resources.rooms.map((room) => ({
+            roomId: Number(room.room_id),
             name: String(room.room_name),
             type: "Campus venue",
             location: String(room.location),
@@ -2346,6 +2432,17 @@ export default function App() {
         setLiveEquipment([]);
         setOrganizations([]);
       });
+  }, [user?.role, user?.userId]);
+  useEffect(() => {
+    if (!user) return;
+    const refreshBookings = () => {
+      fetch(`${apiBase}/api/bookings?role=${user.role}&userId=${user.userId}`)
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to refresh bookings")))
+        .then((rows: Record<string, string | number>[]) => setBookings(rows.map(mapBooking)))
+        .catch(() => undefined);
+    };
+    const interval = window.setInterval(refreshBookings, 5000);
+    return () => window.clearInterval(interval);
   }, [user?.role, user?.userId]);
   if (!role)
     return (

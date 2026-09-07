@@ -93,6 +93,29 @@ export default async function handler(request: Request, response: Response) {
         response.status(415).json({ error: "Only PDF and DOCX files are allowed" });
         return;
       }
+      const [room] = await sql`
+        select room_id
+        from room
+        where room_id = ${Number(roomId)} and availability_status = 'Available'
+      `;
+      if (!room) {
+        response.status(409).json({ error: "This venue is unavailable" });
+        return;
+      }
+      const [roomConflict] = await sql`
+        select booking_id
+        from booking
+        where room_id = ${Number(roomId)}
+          and event_date = ${eventDate}::date
+          and status <> 'Rejected'
+          and (${eventDate}::date + ${startTime}::time, ${eventDate}::date + ${endTime}::time)
+            overlaps (event_date + start_time, event_date + end_time)
+        limit 1
+      `;
+      if (roomConflict) {
+        response.status(409).json({ error: "This venue is already requested for that date and time" });
+        return;
+      }
       for (const item of equipment) {
         const match = String(item).match(/^(.*?) × (\d+)$/);
         if (!match || Number(match[2]) < 1) {
@@ -100,10 +123,21 @@ export default async function handler(request: Request, response: Response) {
           return;
         }
         const [equipmentRow] = await sql`
-          select equipment_id, quantity_available from equipment
+          select equipment_id, quantity_available, status from equipment
           where equipment_name = ${match[1]}
         `;
-        if (!equipmentRow || Number(match[2]) > Number(equipmentRow.quantity_available)) {
+        const [reserved] = equipmentRow ? await sql`
+          select coalesce(sum(be.quantity_requested), 0) as quantity_reserved
+          from booking_equipment be
+          join booking b on b.booking_id = be.booking_id
+          where be.equipment_id = ${equipmentRow.equipment_id}
+            and b.event_date = ${eventDate}::date
+            and b.status <> 'Rejected'
+            and (${eventDate}::date + ${startTime}::time, ${eventDate}::date + ${endTime}::time)
+              overlaps (b.event_date + b.start_time, b.event_date + b.end_time)
+        ` : [{ quantity_reserved: 0 }];
+        if (!equipmentRow || equipmentRow.status !== "Available"
+          || Number(match[2]) > Number(equipmentRow.quantity_available) - Number(reserved.quantity_reserved)) {
           response.status(400).json({ error: "Requested equipment is unavailable" });
           return;
         }
@@ -201,7 +235,8 @@ export default async function handler(request: Request, response: Response) {
     }
 
     response.status(405).json({ error: "Method not allowed" });
-  } catch {
-    response.status(409).json({ error: "Database operation failed" });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Database operation failed";
+    response.status(409).json({ error: message });
   }
 }

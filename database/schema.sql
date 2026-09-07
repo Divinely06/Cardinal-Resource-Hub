@@ -117,4 +117,4 @@ alter table booking
     room_id with =,
     tsrange(event_date + start_time, event_date + end_time, '[)') with &&
   )
-  where (status in ('Approved', 'Prepared'));
+  where (status <> 'Rejected');
