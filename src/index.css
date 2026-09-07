@@ -185,6 +185,13 @@ button {
   color: var(--ink);
   outline: none;
 }
+.field input[type="date"],
+.date-input {
+  min-height: 38px;
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 10px 11px;
+}
 .field input:focus,
 .field textarea:focus,
 .field select:focus,
@@ -692,6 +699,10 @@ button {
   border: 1px solid var(--line);
   background: white;
   color: var(--ink);
+}
+.field-inline .date-input {
+  height: 38px;
+  font-size: 12px;
 }
 .error-text {
   display: block;

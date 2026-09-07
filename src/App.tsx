@@ -1,6 +1,10 @@
 import { FormEvent, useEffect, useState } from "react";
 
 const apiBase = "";
+const localDateValue = () => {
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+};
 
 type Role = "organization" | "faculty" | "admin" | "maintenance" | "dean";
 type UserSession = {
@@ -343,12 +347,14 @@ function Field({
   value,
   onChange,
   placeholder,
+  min,
 }: {
   label: string;
   type: string;
   value: string;
   onChange: (v: string) => void;
   placeholder: string;
+  min?: string;
 }) {
   return (
     <div className="field">
@@ -358,6 +364,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        min={min}
       />
     </div>
   );
@@ -1076,7 +1083,7 @@ function StudentView({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <label className="field-inline">Check date <input type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
+          <label className="field-inline">Check date <input className="date-input" type="date" min={localDateValue()} value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
           <span className="filter-note">
             {
               dateFacilities.filter((f) =>
@@ -1451,6 +1458,7 @@ function BookingForm({
                 value={date}
                 onChange={setDate}
                 placeholder=""
+                min={localDateValue()}
               />
               <div className="field">
                 <label>Start and end time</label>
@@ -2108,7 +2116,7 @@ function Management({
   const [message, setMessage] = useState("");
   const [facilityRows, setFacilityRows] = useState(availableFacilities);
   const [equipmentRows, setEquipmentRows] = useState(availableEquipment);
-  const [availabilityDate, setAvailabilityDate] = useState(new Date().toISOString().slice(0, 10));
+  const [availabilityDate, setAvailabilityDate] = useState(localDateValue());
   const [dateFacilityAvailability, setDateFacilityAvailability] = useState<Record<number, boolean>>({});
   const [dateEquipmentAvailability, setDateEquipmentAvailability] = useState<Record<string, number>>({});
   const [availabilityMonth, setAvailabilityMonth] = useState(availabilityDate.slice(0, 7));
@@ -2318,7 +2326,7 @@ function Management({
       {tab === "equipment" && (
         <Panel title="Equipment inventory">
           <div className="filter-row">
-            <label className="field-inline">Availability date <input type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
+            <label className="field-inline">Availability date <input className="date-input" type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
           </div>
           <div className="table-wrap">
             <table>
@@ -2367,7 +2375,7 @@ function Management({
       {tab === "availability" && (
         <Panel title="Availability management">
           <div className="filter-row">
-            <label className="field-inline">Availability date <input type="date" value={availabilityDate} onChange={(event) => { setAvailabilityDate(event.target.value); setAvailabilityMonth(event.target.value.slice(0, 7)); }} /></label>
+            <label className="field-inline">Availability date <input className="date-input" type="date" value={availabilityDate} onChange={(event) => { setAvailabilityDate(event.target.value); setAvailabilityMonth(event.target.value.slice(0, 7)); }} /></label>
           </div>
           <div className="availability-calendar-header">
             <button className="text-button" onClick={() => {

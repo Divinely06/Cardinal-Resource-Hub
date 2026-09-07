@@ -102,7 +102,7 @@ export default async function handler(_request: Request, response: Response) {
       `,
       sql`
         select e.equipment_id, e.equipment_name, e.category, e.quantity_available, e.status,
-          greatest(0, e.quantity_available - coalesce((
+          case when e.status <> 'Available' then 0 else greatest(0, e.quantity_available - coalesce((
             select sum(be.quantity_requested)
             from booking_equipment be
             join booking b on b.booking_id = be.booking_id
@@ -111,7 +111,7 @@ export default async function handler(_request: Request, response: Response) {
               and b.status <> 'Rejected'
               and (${requestedDate ?? "9999-12-31"}::date + ${startTime}::time, ${requestedDate ?? "9999-12-31"}::date + ${endTime}::time)
                 overlaps (b.event_date + b.start_time, b.event_date + b.end_time)
-          ), 0)) as date_available
+          ), 0)) end as date_available
         from equipment e order by e.equipment_name
       `,
       sql`
