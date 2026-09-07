@@ -2278,9 +2278,6 @@ function Management({
       </div>
       {tab === "facilities" && (
         <Panel title="Facilities">
-          <div className="filter-row resource-date-filter">
-            <label className="field-inline">Availability date <input className="date-input" type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
-          </div>
           <div className="table-wrap">
             <table>
               <thead>
@@ -2327,10 +2324,15 @@ function Management({
         </Panel>
       )}
       {tab === "equipment" && (
-        <Panel title="Equipment inventory">
-          <div className="filter-row">
-            <label className="field-inline">Availability date <input className="date-input" type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} /></label>
-          </div>
+        <Panel
+          title="Equipment inventory"
+          action={
+            <label className="panel-date-filter">
+              <span>Availability date</span>
+              <input className="date-input" type="date" value={availabilityDate} onChange={(event) => setAvailabilityDate(event.target.value)} />
+            </label>
+          }
+        >
           <div className="table-wrap">
             <table>
               <thead>
@@ -2377,9 +2379,6 @@ function Management({
       )}
       {tab === "availability" && (
         <Panel title="Availability management">
-          <div className="filter-row">
-            <label className="field-inline">Availability date <input className="date-input" type="date" value={availabilityDate} onChange={(event) => { setAvailabilityDate(event.target.value); setAvailabilityMonth(event.target.value.slice(0, 7)); }} /></label>
-          </div>
           <div className="availability-calendar-header">
             <button className="text-button" onClick={() => {
               const [year, month] = availabilityMonth.split("-").map(Number);

@@ -566,6 +566,17 @@ button {
   margin: 0;
   font-size: 13px;
 }
+.panel-date-filter {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #73757a;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.panel-date-filter .date-input {
+  width: 150px;
+}
 .booking-list {
   padding: 4px 20px;
 }
