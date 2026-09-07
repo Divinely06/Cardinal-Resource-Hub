@@ -635,6 +635,14 @@ button {
   background: #f8ecee;
   color: #a52b40;
 }
+.status-available {
+  background: #edf7f1;
+  color: #397b58;
+}
+.status-unavailable {
+  background: #fbecee;
+  color: #a42a3f;
+}
 .status-approved,
 .status-prepared {
   background: #edf7f1;
