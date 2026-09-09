@@ -1535,7 +1535,7 @@ function BookingForm({
                       type="number"
                       min="0"
                       max={item.available}
-                      disabled={item.available < 1 || availabilityLoading}
+                      disabled={item.available < 1}
                       value={equipmentRequests[item.name] ?? 0}
                       onChange={(e) => {
                         const quantity = Math.max(
