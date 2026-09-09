@@ -424,8 +424,8 @@ function Auth({
         onLogin(
           result.role as Role,
           result.organizationId ?? undefined,
-          result.name && result.email
-            ? { userId: Number(result.userId), role: result.role as Role, name: result.name, email: result.email }
+          result.name
+            ? { userId: Number(result.userId), role: result.role as Role, name: result.name, email: result.email ?? email.trim() }
             : undefined,
         );
         return;
