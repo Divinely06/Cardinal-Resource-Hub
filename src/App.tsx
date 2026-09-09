@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 const apiBase = "";
+const sessionStorageKey = "cardinal-resource-hub-session";
 const localDateValue = () => {
   const date = new Date();
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -12,6 +13,11 @@ type UserSession = {
   role: Role;
   name: string;
   email: string;
+};
+type StoredSession = {
+  role: Role;
+  user?: UserSession;
+  organizationId?: number;
 };
 type Status =
   | "Faculty review"
@@ -2623,14 +2629,35 @@ function Profile({ role, user }: { role: Role; user?: UserSession }) {
   );
 }
 export default function App() {
-  const [role, setRole] = useState<Role | null>(null);
-  const [user, setUser] = useState<UserSession>();
+  const [storedSession] = useState<StoredSession | null>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(sessionStorageKey) ?? "null") as StoredSession | null;
+      if (!parsed || !["organization", "faculty", "admin", "maintenance", "dean"].includes(parsed.role)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  });
+  const [role, setRole] = useState<Role | null>(storedSession?.role ?? null);
+  const [user, setUser] = useState<UserSession | undefined>(storedSession?.user);
   const [page, setPage] = useState<Page>("dashboard");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [liveFacilities, setLiveFacilities] = useState<typeof facilities>([]);
   const [liveEquipment, setLiveEquipment] = useState<typeof equipment>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [activeOrganizationId, setActiveOrganizationId] = useState(1);
+  const [activeOrganizationId, setActiveOrganizationId] = useState(storedSession?.organizationId ?? 1);
+  const saveSession = (nextRole: Role, nextUser: UserSession | undefined, organizationId: number) => {
+    setRole(nextRole);
+    setUser(nextUser);
+    setActiveOrganizationId(organizationId);
+    try {
+      localStorage.setItem(sessionStorageKey, JSON.stringify({
+        role: nextRole,
+        user: nextUser,
+        organizationId,
+      } satisfies StoredSession));
+    } catch {}
+  };
   useEffect(() => {
     Promise.all([
       user
@@ -2752,9 +2779,7 @@ export default function App() {
       <Auth
         organizations={organizations}
         onLogin={(nextRole, organizationId, nextUser) => {
-          setRole(nextRole);
-          setUser(nextUser);
-          setActiveOrganizationId(organizationId ?? 1);
+          saveSession(nextRole, nextUser, organizationId ?? 1);
           setPage("dashboard");
         }}
       />
@@ -2770,7 +2795,11 @@ export default function App() {
       }
       page={page}
       setPage={setPage}
-      onLogout={() => setRole(null)}
+      onLogout={() => {
+        localStorage.removeItem(sessionStorageKey);
+        setRole(null);
+        setUser(undefined);
+      }}
     >
       {role === "organization" ? (
         <StudentView
