@@ -27,6 +27,7 @@ export default async function handler(request: Request, response: Response) {
         and membership.status = 'Active'
       left join student_organization o on o.org_id = membership.org_id
       where lower(u.email) = lower(${email})
+        and (o.org_id is null or o.status = 'Active')
       limit 1
     `;
 

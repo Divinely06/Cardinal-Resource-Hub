@@ -379,6 +379,7 @@ function Auth({
   const [mode, setMode] = useState<"login" | "forgot" | "reset">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [show, setShow] = useState(false);
   const [message, setMessage] = useState("");
   const submit = async (e: FormEvent) => {
@@ -389,7 +390,13 @@ function Auth({
       return;
     }
     if (mode === "reset") {
+      if (password.length < 4 || password !== confirmPassword) {
+        setMessage("Passwords must match and be at least 4 characters.");
+        return;
+      }
       setMode("login");
+      setPassword("");
+      setConfirmPassword("");
       setMessage("Password updated. You can now sign in.");
       return;
     }
@@ -508,8 +515,8 @@ function Auth({
                 <Field
                   label="Confirm password"
                   type="password"
-                  value={password}
-                  onChange={setPassword}
+                  value={confirmPassword}
+                  onChange={setConfirmPassword}
                   placeholder="Repeat your password"
                 />
               </>
@@ -1004,7 +1011,10 @@ function StudentView({
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("Unable to load availability")))
       .then((resources: { rooms: Record<string, string | number | boolean>[] }) => {
         setDateFacilities(resources.rooms.map((room) => ({
-          ...(availableFacilities.find((item) => item.roomId === Number(room.room_id)) ?? availableFacilities[0]),
+          ...(availableFacilities.find((item) => item.roomId === Number(room.room_id)) ?? {
+            type: "Campus venue",
+            detail: `${String(room.location)} venue with capacity for ${Number(room.capacity)} people.`,
+          }),
           roomId: Number(room.room_id),
           name: String(room.room_name),
           location: String(room.location),
@@ -1067,9 +1077,11 @@ function StudentView({
           const bookingsResponse = await fetch(
             `${apiBase}/api/bookings?role=organization&userId=${user?.userId ?? 0}`,
           );
-          const rows = (await bookingsResponse.json()) as Record<string, string | number>[];
-          setBookings(rows.map(mapBooking));
-            setShowForm(false);
+          if (bookingsResponse.ok) {
+            const rows = (await bookingsResponse.json()) as Record<string, string | number>[];
+            setBookings(rows.map(mapBooking));
+          }
+          setShowForm(false);
           setSubmitted(true);
           setPage("requests");
         }}
@@ -1317,7 +1329,10 @@ function BookingForm({
       }) => {
         if (cancelled) return;
         setDateFacilities(resources.rooms.map((room) => ({
-          ...(availableFacilities.find((item) => item.roomId === Number(room.room_id)) ?? availableFacilities[0]),
+          ...(availableFacilities.find((item) => item.roomId === Number(room.room_id)) ?? {
+            type: "Campus venue",
+            detail: `${String(room.location)} venue with capacity for ${Number(room.capacity)} people.`,
+          }),
           roomId: Number(room.room_id),
           name: String(room.room_name),
           location: String(room.location),
@@ -1325,7 +1340,10 @@ function BookingForm({
           status: room.date_available === false ? "Unavailable" : String(room.availability_status),
         })));
         setDateEquipment(resources.equipment.map((item) => ({
-          ...(availableEquipment.find((resource) => resource.name === String(item.equipment_name)) ?? availableEquipment[0]),
+          ...(availableEquipment.find((resource) => resource.name === String(item.equipment_name)) ?? {
+            category: String(item.category ?? "General"),
+          }),
+          equipmentId: Number(item.equipment_id),
           name: String(item.equipment_name),
           available: Number(item.date_available ?? item.quantity_available),
           total: Number(item.quantity_available),
@@ -1624,6 +1642,7 @@ function StaffView({
   setOrganizations: React.Dispatch<React.SetStateAction<Organization[]>>;
 }) {
   const [selected, setSelected] = useState<Booking | null>(null);
+  const [actionError, setActionError] = useState("");
   if (page === "management") {
     return (
       <Management
@@ -1749,40 +1768,42 @@ function StaffView({
             readOnly={readOnly || (role === "dean" && selected.status !== "Dean review")}
             onClose={() => setSelected(null)}
             onUpdate={async (status, remarks) => {
-              const reviewerId =
-                role === "faculty"
-                    ? user?.userId
-                  : role === "admin"
-                      ? user?.userId
-                    : role === "maintenance"
-                        ? user?.userId
-                        : user?.userId;
-              const response = await fetch(
-                import.meta.env.DEV
-                  ? `${apiBase}/api/bookings/${selected.id}/status`
-                  : `${apiBase}/api/bookings?id=${selected.id}`,
-                {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    status,
-                    userId: reviewerId,
-                    remarks,
-                  }),
-                },
-              );
-              if (!response.ok) return;
-              setBookings(
-                bookings.map((b) =>
-                  b.id === selected.id
-                    ? { ...b, status, rejectionReason: status === "Rejected" ? remarks : undefined }
-                    : b,
-                ),
-              );
-              setSelected(null);
+              setActionError("");
+              if (!user?.userId) {
+                setActionError("Your reviewer session has expired. Please sign in again.");
+                return;
+              }
+              try {
+                const response = await fetch(
+                  import.meta.env.DEV
+                    ? `${apiBase}/api/bookings/${selected.id}/status`
+                    : `${apiBase}/api/bookings?id=${selected.id}`,
+                  {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ status, userId: user.userId, remarks }),
+                  },
+                );
+                if (!response.ok) {
+                  const result = await response.json().catch(() => ({}));
+                  setActionError(result.error ?? "Unable to update this booking.");
+                  return;
+                }
+                setBookings(
+                  bookings.map((b) =>
+                    b.id === selected.id
+                      ? { ...b, status, rejectionReason: status === "Rejected" ? remarks : undefined }
+                      : b,
+                  ),
+                );
+                setSelected(null);
+              } catch {
+                setActionError("Unable to reach the booking service. Try again.");
+              }
             }}
           />
         )}
+        {actionError && <div className="notice error">{actionError}</div>}
       </>
     );
   }
@@ -1863,7 +1884,9 @@ function Review({
           {booking.equipment.length > 0 && (
             <div>
               <span>Equipment requested</span>
-              <b>{booking.equipment.join(", ")}</b>
+              <b>{booking.equipment.map((item) => typeof item === "string"
+                ? item
+                : `${item.quantity} × equipment #${item.equipmentId}`).join(", ")}</b>
             </div>
           )}
           {booking.rejectionReason && (
@@ -2087,21 +2110,23 @@ function Organizations({
                     </button>
                     <button
                       className="text-button table-action"
-                      onClick={() =>
-                        setOrganizations(
-                          organizations.map((current) =>
-                            current.id === item.id
-                              ? {
-                                  ...current,
-                                  status:
-                                    current.status === "Inactive"
-                                      ? "Active"
-                                      : "Inactive",
-                                }
-                              : current,
-                          ),
-                        )
-                      }
+                      onClick={async () => {
+                        const nextStatus = item.status === "Inactive" ? "Active" : "Inactive";
+                        const response = await fetch(`${apiBase}/api/organizations`, {
+                          method: "PATCH",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ orgId: item.id, status: nextStatus }),
+                        });
+                        if (!response.ok) {
+                          const result = await response.json().catch(() => ({}));
+                          setMessage(result.error ?? "Unable to update organization status.");
+                          return;
+                        }
+                        setOrganizations((current) => current.map((organization) =>
+                          organization.id === item.id ? { ...organization, status: nextStatus } : organization,
+                        ));
+                        setMessage(`${item.name} is now ${nextStatus.toLowerCase()}.`);
+                      }}
                     >
                       {item.status === "Inactive" ? "Activate" : "Deactivate"}
                     </button>

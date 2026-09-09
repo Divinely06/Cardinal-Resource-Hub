@@ -1820,7 +1820,7 @@ td small {
   margin-top: 22px;
 }
 .app-shell {
-  background: #f1f1f8;
+  background: #f2f3f1;
 }
 .sidebar {
   width: 220px;
@@ -1873,7 +1873,7 @@ td small {
   padding: 14px 5px 0;
 }
 .main {
-  background: #f7f7fb;
+  background: #f8f8f6;
 }
 .topbar {
   height: 58px;
@@ -1980,8 +1980,8 @@ td small {
 }
 .resource-image {
   height: 112px;
-  background: linear-gradient(135deg, #ecebfa, #f8f4fb);
-  color: #b7afd8;
+  background: #f0ece6;
+  color: #a9a097;
 }
 .resource-body {
   padding: 15px;
@@ -2018,7 +2018,7 @@ td {
   font-size: 8px;
 }
 .form-aside {
-  background: #eeecfa;
+  background: #f1eee9;
   border-top-color: #c8102e;
 }
 .profile-card {

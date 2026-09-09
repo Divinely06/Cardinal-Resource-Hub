@@ -81,10 +81,10 @@ export default async function handler(_request: Request, response: Response) {
     const requestedDate = typeof _request.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(_request.query.date)
       ? _request.query.date
       : null;
-    const startTime = typeof _request.query.startTime === "string" && /^\d{2}:\d{2}$/.test(_request.query.startTime)
+    const startTime = typeof _request.query.startTime === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(_request.query.startTime)
       ? _request.query.startTime
       : "00:00";
-    const endTime = typeof _request.query.endTime === "string" && /^\d{2}:\d{2}$/.test(_request.query.endTime)
+    const endTime = typeof _request.query.endTime === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(_request.query.endTime)
       ? _request.query.endTime
       : "23:59";
     const [rooms, equipment, organizations] = await Promise.all([

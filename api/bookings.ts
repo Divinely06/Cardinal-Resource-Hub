@@ -81,6 +81,15 @@ export default async function handler(request: Request, response: Response) {
         response.status(400).json({ error: "Booking request ID is required" });
         return;
       }
+      if (!Number.isInteger(Number(orgId)) || !Number.isInteger(Number(roomId))
+        || !Number.isInteger(Number(participantCount)) || Number(participantCount) < 1
+        || !/^\d{4}-\d{2}-\d{2}$/.test(String(eventDate))
+        || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(startTime))
+        || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(endTime))
+        || String(startTime) >= String(endTime)) {
+        response.status(400).json({ error: "Invalid booking date, time, or participant count" });
+        return;
+      }
       if (!Array.isArray(equipment) || equipment.some((item: unknown) => {
         if (typeof item === "string") return false;
         if (!item || typeof item !== "object") return true;

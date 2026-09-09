@@ -5,25 +5,26 @@ const sql = neon(process.env.DATABASE_URL!);
 
 export default async function handler(request: Request, response: Response) {
   if (request.method === "PATCH") {
-    const { orgId, facultyAdviser } = request.body ?? {};
-    if (!orgId || !facultyAdviser) {
-      response.status(400).json({ error: "Organization and faculty adviser are required" });
+    const { orgId, facultyAdviser, status } = request.body ?? {};
+    if (!orgId || (!facultyAdviser && !status)) {
+      response.status(400).json({ error: "Organization and an update are required" });
       return;
     }
     try {
-      const [adviser] = await sql`
+      const [adviser] = facultyAdviser ? await sql`
         select user_id from app_user
         where full_name = ${facultyAdviser} and role = 'faculty'
-      `;
-      if (!adviser) {
+      ` : [null];
+      if (facultyAdviser && !adviser) {
         response.status(404).json({ error: "Faculty adviser not found" });
         return;
       }
       const [organization] = await sql`
         update student_organization
-        set faculty_adviser_id = ${adviser.user_id}
+        set faculty_adviser_id = coalesce(${adviser?.user_id ?? null}, faculty_adviser_id),
+            status = coalesce(${status ?? null}, status)
         where org_id = ${orgId}
-        returning org_id, org_name, contact_email, status
+        returning org_id, org_name, contact_email, status, faculty_adviser_id
       `;
       if (!organization) {
         response.status(404).json({ error: "Organization not found" });

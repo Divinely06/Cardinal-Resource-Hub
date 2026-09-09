@@ -41,6 +41,7 @@ app.post(["/api/auth", "/api/login"], async (request, response) => {
         and membership.status = 'Active'
       left join student_organization o on o.org_id = membership.org_id
       where lower(u.email) = lower(${email})
+        and (o.org_id is null or o.status = 'Active')
       limit 1
     `;
     if (!user || !user.password_matches) {
@@ -122,10 +123,10 @@ app.get("/api/resources", async (request, response) => {
     const requestedDate = typeof request.query.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(request.query.date)
       ? request.query.date
       : null;
-    const startTime = typeof request.query.startTime === "string" && /^\d{2}:\d{2}$/.test(request.query.startTime)
+    const startTime = typeof request.query.startTime === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(request.query.startTime)
       ? request.query.startTime
       : "00:00";
-    const endTime = typeof request.query.endTime === "string" && /^\d{2}:\d{2}$/.test(request.query.endTime)
+    const endTime = typeof request.query.endTime === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(request.query.endTime)
       ? request.query.endTime
       : "23:59";
     const [rooms, equipment, organizations] = await Promise.all([
@@ -285,25 +286,26 @@ app.post("/api/organizations", async (request, response) => {
 });
 
 app.patch("/api/organizations", async (request, response) => {
-  const { orgId, facultyAdviser } = request.body ?? {};
-  if (!orgId || !facultyAdviser) {
-    response.status(400).json({ error: "Organization and faculty adviser are required" });
+  const { orgId, facultyAdviser, status } = request.body ?? {};
+  if (!orgId || (!facultyAdviser && !status)) {
+    response.status(400).json({ error: "Organization and an update are required" });
     return;
   }
   try {
-    const [adviser] = await sql`
+    const [adviser] = facultyAdviser ? await sql`
       select user_id from app_user
       where full_name = ${facultyAdviser} and role = 'faculty'
-    `;
-    if (!adviser) {
+    ` : [null];
+    if (facultyAdviser && !adviser) {
       response.status(404).json({ error: "Faculty adviser not found" });
       return;
     }
     const [organization] = await sql`
       update student_organization
-      set faculty_adviser_id = ${adviser.user_id}
+      set faculty_adviser_id = coalesce(${adviser?.user_id ?? null}, faculty_adviser_id),
+          status = coalesce(${status ?? null}, status)
       where org_id = ${orgId}
-      returning org_id, org_name, contact_email, status
+      returning org_id, org_name, contact_email, status, faculty_adviser_id
     `;
     if (!organization) {
       response.status(404).json({ error: "Organization not found" });
@@ -333,6 +335,15 @@ app.post("/api/bookings", async (request, response) => {
 
   if (!clientRequestId) {
     response.status(400).json({ error: "Booking request ID is required" });
+    return;
+  }
+  if (!Number.isInteger(Number(orgId)) || !Number.isInteger(Number(roomId))
+    || !Number.isInteger(Number(participantCount)) || Number(participantCount) < 1
+    || !/^\d{4}-\d{2}-\d{2}$/.test(String(eventDate))
+    || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(startTime))
+    || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(endTime))
+    || String(startTime) >= String(endTime)) {
+    response.status(400).json({ error: "Invalid booking date, time, or participant count" });
     return;
   }
   if (!Array.isArray(equipment) || equipment.some((item: unknown) => {
