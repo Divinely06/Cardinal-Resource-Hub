@@ -49,7 +49,7 @@ type Booking = {
   time: string;
   people: number;
   status: Status;
-  equipment: string[];
+  equipment: Array<string | { equipmentId: number; quantity: number }>;
   purpose: string;
   rejectionReason?: string;
   requestedByUserId: number;
@@ -1061,7 +1061,8 @@ function StudentView({
             }),
           });
           if (!response.ok) {
-            throw new Error("Unable to submit booking request");
+            const details = await response.json().catch(() => null) as { error?: string } | null;
+            throw new Error(details?.error ?? "Unable to submit booking request");
           }
           const bookingsResponse = await fetch(
             `${apiBase}/api/bookings?role=organization&userId=${user?.userId ?? 0}`,
@@ -1402,7 +1403,10 @@ function BookingForm({
               status: "Faculty review",
               equipment: Object.entries(equipmentRequests)
                 .filter(([, quantity]) => quantity > 0)
-                .map(([name, quantity]) => `${name} × ${quantity}`),
+                .map(([name, quantity]) => ({
+                  equipmentId: dateEquipment.find((item) => item.name === name)?.equipmentId ?? 0,
+                  quantity,
+                })),
               purpose,
               requestedByUserId: user?.userId ?? 0,
               roomId: dateFacilities.find((f) => f.name === venue)?.roomId ?? 0,
@@ -1412,8 +1416,8 @@ function BookingForm({
                 ? { name: selectedAttachment.name, type: selectedAttachment.type, data: attachmentData }
                 : undefined,
               });
-            } catch {
-              setError("Unable to submit the request. Please try again.");
+            } catch (submissionError) {
+              setError(submissionError instanceof Error ? submissionError.message : "Unable to submit the request. Please try again.");
               setSubmitting(false);
             }
           }}

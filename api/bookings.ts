@@ -81,7 +81,13 @@ export default async function handler(request: Request, response: Response) {
         response.status(400).json({ error: "Booking request ID is required" });
         return;
       }
-      if (!Array.isArray(equipment) || equipment.some((item: unknown) => typeof item !== "string")) {
+      if (!Array.isArray(equipment) || equipment.some((item: unknown) => {
+        if (typeof item === "string") return false;
+        if (!item || typeof item !== "object") return true;
+        const request = item as { equipmentId?: unknown; quantity?: unknown };
+        return !Number.isInteger(Number(request.equipmentId)) || Number(request.equipmentId) < 1
+          || !Number.isInteger(Number(request.quantity)) || Number(request.quantity) < 1;
+      })) {
         response.status(400).json({ error: "Invalid equipment request" });
         return;
       }
@@ -117,14 +123,19 @@ export default async function handler(request: Request, response: Response) {
         return;
       }
       for (const item of equipment) {
-        const match = String(item).match(/^(.*?) × (\d+)$/);
-        if (!match || Number(match[2]) < 1) {
+        const request = typeof item === "string"
+          ? (() => {
+              const match = item.match(/^(.*?) × (\d+)$/);
+              return match ? { name: match[1], quantity: Number(match[2]) } : null;
+            })()
+          : { equipmentId: Number(item.equipmentId), quantity: Number(item.quantity) };
+        if (!request || request.quantity < 1) {
           response.status(400).json({ error: "Invalid equipment quantity" });
           return;
         }
         const [equipmentRow] = await sql`
           select equipment_id, quantity_available, status from equipment
-          where equipment_name = ${match[1]}
+          where ${"equipmentId" in request ? sql`equipment_id = ${request.equipmentId}` : sql`equipment_name = ${request.name}`}
         `;
         const [reserved] = equipmentRow ? await sql`
           select coalesce(sum(be.quantity_requested), 0) as quantity_reserved
@@ -137,7 +148,7 @@ export default async function handler(request: Request, response: Response) {
               overlaps (b.event_date + b.start_time, b.event_date + b.end_time)
         ` : [{ quantity_reserved: 0 }];
         if (!equipmentRow || equipmentRow.status !== "Available"
-          || Number(match[2]) > Number(equipmentRow.quantity_available) - Number(reserved.quantity_reserved)) {
+          || request.quantity > Number(equipmentRow.quantity_available) - Number(reserved.quantity_reserved)) {
           response.status(400).json({ error: "Requested equipment is unavailable" });
           return;
         }
@@ -166,12 +177,18 @@ export default async function handler(request: Request, response: Response) {
         `;
       }
       for (const item of equipment) {
-        const match = String(item).match(/^(.*?) × (\d+)$/);
-        if (!match) continue;
+        const request = typeof item === "string"
+          ? (() => {
+              const match = item.match(/^(.*?) × (\d+)$/);
+              return match ? { name: match[1], quantity: Number(match[2]) } : null;
+            })()
+          : { equipmentId: Number(item.equipmentId), quantity: Number(item.quantity) };
+        if (!request) continue;
         await sql`
           insert into booking_equipment (booking_id, equipment_id, quantity_requested)
-          select ${booking.booking_id}, equipment_id, ${Number(match[2])}
-          from equipment where equipment_name = ${match[1]}
+          select ${booking.booking_id}, equipment_id, ${request.quantity}
+          from equipment
+          where ${"equipmentId" in request ? sql`equipment_id = ${request.equipmentId}` : sql`equipment_name = ${request.name}`}
         `;
       }
       response.status(201).json({ created: true, bookingId: booking.booking_id });
